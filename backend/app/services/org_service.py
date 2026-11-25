@@ -301,7 +301,8 @@ def create_batch(data):
 
 def build_batch(ou, clean):
     batch = Batch(code=clean["code"], name=clean["name"], ou_id=ou.id, domain_id=clean["domain_id"], subdomain_id=clean.get("subdomain_id"), mode=clean.get("mode", "online"),
-                  start_date=clean["start_date"], end_date=clean["end_date"])
+                  start_date=clean["start_date"], end_date=clean["end_date"],
+                  project_start_date=clean["start_date"], project_end_date=clean["end_date"])
     db.session.add(batch)
     db.session.flush()
     _apply_details(batch, ou, clean["details"])
@@ -329,6 +330,10 @@ def update_batch(batch, data):
     batch.code, batch.name, batch.domain_id = clean["code"], clean["name"], clean["domain_id"]
     batch.subdomain_id = clean["subdomain_id"]
     batch.start_date, batch.end_date = clean["start_date"], clean["end_date"]
+    if "start_date" in data:  # only when the caller sends a date, so unrelated edits leave the project window alone
+        batch.project_start_date = clean["start_date"]
+    if "end_date" in data:
+        batch.project_end_date = clean["end_date"]
     _apply_details(batch, batch.ou, clean["details"])
     return batch
 
@@ -345,6 +350,7 @@ def set_project_dates(batch, start_raw, end_raw):
     if errors:
         raise AppError("Validation failed", 422, errors)
     batch.project_start_date, batch.project_end_date = start, end
+    batch.start_date, batch.end_date = start, end
     return batch
 
 

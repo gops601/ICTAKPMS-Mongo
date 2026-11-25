@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Download, FileUp, Lock, LockOpen } from 'lucide-react'
+import { Download, ExternalLink, FileUp, Lock, LockOpen } from 'lucide-react'
 import { srsService } from '../services/adminService'
 import { errorMessage, fieldErrors } from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import Alert from './Alert'
 import Spinner from './Spinner'
 import StatusBadge from './StatusBadge'
+import SourceToggle from './SourceToggle'
 
 const TONE = { not_submitted: 'grey', submitted: 'blue', under_review: 'orange', changes_requested: 'red', approved: 'green', rejected: 'red' }
 const SUB_LABEL = { submitted: 'Submitted', under_review: 'Under Review', changes_requested: 'Changes Requested', approved: 'Approved', rejected: 'Rejected' }
@@ -25,6 +26,8 @@ export default function SrsPanel({ projectId }) {
   const [notice, setNotice] = useState('')
   const [busy, setBusy] = useState(false)
   const [file, setFile] = useState(null)
+  const [mode, setMode] = useState('file')
+  const [link, setLink] = useState('')
   const [description, setDescription] = useState('')
   const [remarks, setRemarks] = useState('')
   const [remarkError, setRemarkError] = useState('')
@@ -43,11 +46,12 @@ export default function SrsPanel({ projectId }) {
   const submit = async (e) => {
     e.preventDefault()
     setError(''); setNotice('')
-    if (!file) return setError('Choose a PDF or DOCX file first.')
+    const source = mode === 'link' ? link.trim() : file
+    if (!source) return setError(mode === 'link' ? 'Paste the link to your SRS first.' : 'Choose a PDF or DOCX file first.')
     setBusy(true)
     try {
-      setData(await srsService.submit(projectId, file, description))
-      setFile(null); setDescription(''); if (fileRef.current) fileRef.current.value = ''
+      setData(await srsService.submit(projectId, source, description))
+      setFile(null); setLink(''); setDescription(''); if (fileRef.current) fileRef.current.value = ''
       setNotice('SRS submitted. Your mentor has been notified.')
     } catch (err) { setError(errorMessage(err)) } finally { setBusy(false) }
   }
@@ -92,24 +96,36 @@ export default function SrsPanel({ projectId }) {
       {isStudent && (
         <form onSubmit={submit} className="card space-y-3" aria-label="Submit SRS">
           <h2 className="font-semibold text-slate-900">{latest ? 'Submit a revised SRS' : 'Submit your SRS'}</h2>
+          {data.status === 'not_submitted' && data.due_date && (
+            <p className="text-sm text-slate-600">Submit your SRS in the first week, by {new Date(`${data.due_date}T00:00:00`).toLocaleDateString()}.</p>
+          )}
           {!data.can_submit ? (
             <p className="text-sm text-slate-600">
               {data.status === 'approved' ? 'Your SRS has been approved.'
-                : data.status === 'not_submitted' ? 'Start SRS preparation from My Project before submitting.'
+                : data.status === 'not_submitted' ? 'The SRS opens once your project is approved.'
                   : 'Your SRS is with your mentor for review. You can submit a revision if changes are requested.'}
             </p>
           ) : (
             <>
-              {data.status === 'changes_requested' && <Alert type="warning">Your mentor asked for changes. Upload a revised document below.</Alert>}
-              <div>
-                <label htmlFor="srs-file" className="label">SRS document (PDF or DOCX, max 15 MB)</label>
-                <input id="srs-file" ref={fileRef} type="file" accept=".pdf,.docx" className="text-sm" onChange={onFile} />
-              </div>
+              {data.status === 'changes_requested' && <Alert type="warning">Your mentor asked for changes. Submit a revised document below.</Alert>}
+              <SourceToggle name="srs-source" label="How to submit" mode={mode} onChange={(m) => { setMode(m); setFile(null); setError('') }} />
+              {mode === 'file' ? (
+                <div>
+                  <label htmlFor="srs-file" className="label">SRS document (PDF or DOCX, max 15 MB)</label>
+                  <input id="srs-file" ref={fileRef} type="file" accept=".pdf,.docx" className="text-sm" onChange={onFile} />
+                </div>
+              ) : (
+                <div>
+                  <label htmlFor="srs-link" className="label">Link to your SRS document</label>
+                  <input id="srs-link" type="url" className="input" placeholder="https://drive.google.com/…" value={link} onChange={(e) => setLink(e.target.value)} />
+                  <p className="mt-1 text-xs text-slate-500">Share it so that your mentor can open it.</p>
+                </div>
+              )}
               <div>
                 <label htmlFor="srs-desc" className="label">Description (optional)</label>
                 <textarea id="srs-desc" className="input" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
               </div>
-              <button className="btn-primary" disabled={busy}><FileUp className="h-4 w-4" />{busy ? 'Uploading…' : 'Submit SRS'}</button>
+              <button className="btn-primary" disabled={busy}><FileUp className="h-4 w-4" />{busy ? 'Submitting…' : 'Submit SRS'}</button>
             </>
           )}
         </form>
@@ -143,8 +159,8 @@ export default function SrsPanel({ projectId }) {
                   <span className="font-medium">Version {s.version}</span>
                   <StatusBadge tone={TONE[s.status]}>{SUB_LABEL[s.status]}</StatusBadge>
                 </div>
-                <button className="btn-secondary" onClick={() => download(s)} aria-label={`Download version ${s.version}`}>
-                  <Download className="h-4 w-4" />{s.file.name} · {fmtSize(s.file.size_bytes)}
+                <button className="btn-secondary" onClick={() => download(s)} aria-label={`${s.file.url ? 'Open' : 'Download'} version ${s.version}`}>
+                  {s.file.url ? <><ExternalLink className="h-4 w-4" />{s.file.name}</> : <><Download className="h-4 w-4" />{s.file.name} · {fmtSize(s.file.size_bytes)}</>}
                 </button>
               </div>
               <div className="mt-1 text-xs text-slate-500">Submitted {fmt(s.submitted_at)}</div>

@@ -2,6 +2,7 @@
 import mimetypes
 import os
 import uuid
+from urllib.parse import unquote, urlsplit
 
 from werkzeug.utils import secure_filename
 
@@ -29,6 +30,7 @@ _MAGIC = {
     "parquet": (b"PAR1",),
 }
 _TEXT_EXT = {"csv", "tsv", "json", "xml", "txt", "md"}
+MAX_URL = 2000
 
 
 def _extension(name):
@@ -79,9 +81,67 @@ def save_upload(file_storage, category, user_id):
     return attachment
 
 
+def clean_url(url, field="url"):
+    """Accept only a complete http(s) web address without embedded credentials; returns it trimmed."""
+    url = (url or "").strip()
+
+    def invalid(message):
+        return AppError(message, 422, {field: message})
+
+    if not url:
+        raise invalid("A link is required")
+    if len(url) > MAX_URL:
+        raise invalid(f"The link is too long (max {MAX_URL} characters)")
+    try:
+        parts = urlsplit(url)
+        host, has_login = parts.hostname, parts.username is not None or parts.password is not None
+    except ValueError:
+        host, has_login = None, False
+    if (any(ch.isspace() or not ch.isprintable() or ch in '\\<>"' for ch in url) or not host
+            or parts.scheme.lower() not in ("http", "https") or "." not in host):
+        raise invalid("Enter a full web link starting with https://")
+    if has_login:
+        raise invalid("The link must not contain a username or password")
+    return url
+
+
+def _link_name(url):
+    """A readable name: the file name at the end of the address if there is one, else the site."""
+    parts = urlsplit(url)
+    last = unquote(parts.path.rstrip("/").rsplit("/", 1)[-1]).strip()
+    if "." in last and last.isprintable():
+        return last[:255]
+    return f"Link ({parts.hostname})"[:255]
+
+
+def save_link(url, category, user_id, field="url"):
+    """Record a link in place of an uploaded file. The address is never fetched by the server."""
+    url = clean_url(url, field)
+    token = uuid.uuid4().hex
+    attachment = FileAttachment(
+        category=category, original_name=_link_name(url), stored_name=f"{token}.link", storage_key=f"link/{token}",
+        external_url=url, mime_type="text/uri-list", size_bytes=0, uploaded_by=user_id)
+    db.session.add(attachment)
+    db.session.flush()
+    return attachment
+
+
+def save_source(file_storage, url, category, user_id):
+    """Exactly one of an uploaded file or a link."""
+    has_file, has_url = bool(file_storage and file_storage.filename), bool((url or "").strip())
+    if has_file and has_url:
+        raise AppError("Provide either a file or a link, not both", 422, {"url": "Remove the file or the link"})
+    if has_url:
+        return save_link(url, category, user_id)
+    if not has_file:
+        raise AppError("A file or a link is required", 422)
+    return save_upload(file_storage, category, user_id)
+
+
 def delete_file(attachment):
     """Remove the stored object and its metadata row (call after detaching it from owners)."""
-    get_storage().delete(attachment.storage_key)
+    if not attachment.external_url:
+        get_storage().delete(attachment.storage_key)
     db.session.delete(attachment)
 
 

@@ -1,5 +1,6 @@
 import io
 import os
+from datetime import date, timedelta
 
 import pytest
 
@@ -105,7 +106,7 @@ def test_only_project_members_can_submit(client, world):
 
 def test_cannot_submit_in_wrong_stage(client, world):
     p = world["p1"]
-    for st in ("allocated", "srs_submitted", "srs_under_review", "srs_approved", "implementation"):
+    for st in ("srs_submitted", "srs_under_review", "srs_approved", "implementation"):
         p.stage = st
         db.session.commit()
         r = submit(client, world, "s1", p)
@@ -282,9 +283,7 @@ def test_invalid_github_urls_rejected(client, world, url):
     assert db.session.query(ProjectGithubRepository).count() == 0
 
 
-def test_github_locked_until_srs_approved_and_member_only(client, world):
-    assert gh(client, world, "s1", world["p1"], "https://github.com/o/r").status_code == 409     # SRS not approved
-    approve(client, world, world["p1"])
+def test_github_open_from_project_approval_and_member_only(client, world):
     assert gh(client, world, "s2", world["p1"], "https://github.com/o/r").status_code == 404     # not a member
     assert gh(client, world, "m1", world["p1"], "https://github.com/o/r").status_code == 403
     assert gh(client, world, "la", world["p1"], "https://github.com/o/r").status_code == 403
@@ -314,6 +313,36 @@ def test_team_members_share_one_repository(client, world):
     gh(client, world, "s2", p, "https://github.com/team/app")
     assert gh(client, world, "s3", p, "https://github.com/team/app2").status_code == 200
     assert client.get(f"/api/github/projects/{p.id}", headers=world["H"]["s2"]).get_json()["data"]["repository"]["url"].endswith("app2")
+
+
+def test_srs_can_be_uploaded_straight_after_allocation(client, world):
+    p = world["p1"]
+    p.stage = "allocated"
+    db.session.commit()
+    assert submit(client, world, "s1", p).status_code == 201
+    assert stage(p) == "srs_submitted"
+
+
+def test_first_week_checklist(client, world):
+    p = world["p1"]
+    p.start_date = date.today() - timedelta(days=8)
+    db.session.commit()
+
+    def week_one():
+        return client.get(f"/api/projects/{p.id}", headers=world["H"]["s1"]).get_json()["data"]["first_week"]
+
+    d = week_one()
+    assert d["due_date"] == (date.today() - timedelta(days=1)).isoformat()
+    assert d["srs"]["state"] == "overdue" and d["github"]["state"] == "overdue"
+    submit(client, world, "s1", p)
+    assert week_one()["srs"]["state"] == "late"
+    db.session.expire_all()
+    p = db.session.get(Project, p.id)
+    p.start_date = date.today()
+    db.session.commit()
+    assert gh(client, world, "s1", p, "https://github.com/o/r").status_code == 200
+    d = week_one()
+    assert d["srs"]["state"] == "submitted" and d["github"]["state"] == "submitted"
 
 
 def test_progress_reflects_srs_and_github(client, world):
@@ -351,3 +380,14 @@ def test_uploaded_srs_stored_outside_public_paths(client, world, app):
     att = db.session.query(FileAttachment).one()
     root = os.path.realpath(app.config["UPLOAD_FOLDER"])
     assert os.path.realpath(os.path.join(root, att.storage_key)).startswith(root) and ".." not in att.storage_key
+
+
+# ------------------------------------------------------------ SRS submitted as a link
+def test_srs_can_be_submitted_as_a_link(client, world):
+    url = "https://docs.google.com/document/d/abc/edit"
+    r = client.post(f"/api/srs/projects/{world['p1'].id}", headers=world["H"]["s1"], content_type="multipart/form-data",
+                    data={"url": url})
+    assert r.status_code == 201, r.get_json()
+    sub = r.get_json()["data"]["submissions"][0]
+    assert sub["file"]["url"] == url and sub["version"] == 1
+    assert client.get(f"/api/srs/submissions/{sub['id']}/download", headers=world["H"]["s1"]).status_code == 409

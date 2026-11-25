@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Check, Download, X } from 'lucide-react'
+import { Check, Download, ExternalLink, X } from 'lucide-react'
 import { proposalService } from '../../services/adminService'
 import { errorMessage } from '../../services/api'
 import { useDebounced, useList } from '../../hooks/useList'
@@ -56,7 +56,7 @@ export default function ProposalApprovals() {
           { key: 'status', header: 'Status', render: (p) => <StatusBadge tone={TONE[p.status]}>{p.status}</StatusBadge> },
           { key: 'actions', header: 'Actions', render: (p) => (
             <div className="flex gap-2">
-              <button className="btn-secondary" onClick={() => download(p)} aria-label={`Download ${p.file.name}`}><Download className="h-4 w-4" /></button>
+              <button className="btn-secondary" onClick={() => download(p)} aria-label={`${p.file.url ? 'Open' : 'Download'} ${p.file.name}`} title={p.file.url || undefined}>{p.file.url ? <ExternalLink className="h-4 w-4" /> : <Download className="h-4 w-4" />}</button>
               {p.status === 'pending' && <>
                 <button className="btn-primary" onClick={() => open(p, 'approve')}><Check className="h-4 w-4" />Approve</button>
                 <button className="btn-secondary" onClick={() => open(p, 'reject')}><X className="h-4 w-4" />Reject</button>

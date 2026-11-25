@@ -141,7 +141,7 @@ def _clean_subdomain(student, subdomain_id):
 
 
 def submit(student, title, summary, file_storage, user, dataset_files=None, subdomain_id=None, data_sheet=None,
-           project_mode="individual", members=None):
+           project_mode="individual", members=None, url=None, dataset_links=None):
     title = (title or "").strip()
     if not title:
         raise AppError("Title is required", 422, {"title": "Title is required"})
@@ -153,14 +153,16 @@ def submit(student, title, summary, file_storage, user, dataset_files=None, subd
     sub = _clean_subdomain(student, subdomain_id)
     is_group, group = clean_group(student, project_mode, members)
     dataset_files = [f for f in (dataset_files or []) if f and f.filename]
-    if len(dataset_files) > MAX_DATASETS:
+    links = [file_service.clean_url(x, "dataset_links") for x in (dataset_links or []) if (x or "").strip()]
+    dataset_count = len(dataset_files) + len(links)
+    if dataset_count > MAX_DATASETS:
         raise AppError(f"At most {MAX_DATASETS} datasets per project", 422, {"datasets": "Too many files"})
     has_sheet = bool(data_sheet and data_sheet.filename)
-    if dataset_files and not has_sheet:
+    if dataset_count and not has_sheet:
         raise AppError("Describe your datasets in the data collection sheet (download the Excel template) and upload it with them.", 422,
                        {"data_sheet": "Required when you upload datasets"})
     rows = data_collection.parse(data_sheet) if has_sheet else None
-    attachment = file_service.save_upload(file_storage, "problem_statement", user.id)
+    attachment = file_service.save_source(file_storage, url, "problem_statement", user.id)
     proposal = StudentProposal(data_collection=rows, student_id=student.id, title=title, summary=(summary or "").strip()[:5000] or None,
                                file_id=attachment.id, subdomain_id=sub.id if sub else None,
                                is_group=is_group, group_members=group)
@@ -169,6 +171,10 @@ def submit(student, title, summary, file_storage, user, dataset_files=None, subd
     datasets = []
     for f in dataset_files:
         ds = file_service.save_upload(f, "dataset", user.id)
+        db.session.add(ProposalDataset(proposal_id=proposal.id, file_id=ds.id))
+        datasets.append(ds)
+    for link in links:
+        ds = file_service.save_link(link, "dataset", user.id, "dataset_links")
         db.session.add(ProposalDataset(proposal_id=proposal.id, file_id=ds.id))
         datasets.append(ds)
     if has_sheet:                                   # keep the filled sheet itself next to the datasets
@@ -227,7 +233,7 @@ def review(proposal, decision, remarks, user):
     if proposal.status == "approved":
         ps.approval_status = "approved"
         project = _start_project(proposal, ps, user)
-        extra = f" It is on the Project Shelf as {ps.ps_code} and your project has started and is now in SRS Preparation – you can begin the SRS."
+        extra = f" It is on the Project Shelf as {ps.ps_code} and your project has started and is now in SRS Preparation – submit your SRS and GitHub repository link within the first week."
         notify(domain_lead_user_ids(ps.domain_id), "shelf_student_project", "Student project approved",
                f"“{ps.title}” ({ps.ps_code}) was approved and allocated to {proposal.student.user.name}.",
                f"/projects/{project.id}")

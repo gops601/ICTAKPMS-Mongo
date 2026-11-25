@@ -79,7 +79,7 @@ def test_template_downloads(client, world):                                     
     r = client.get(url + "?format=xlsx", headers=world["H"]["s1"])
     assert r.status_code == 200 and r.data[:2] == b"PK"
     r = client.get(url + "?format=csv", headers=world["H"]["m1"])
-    assert r.status_code == 200 and r.data.decode("utf-8-sig").splitlines()[0].startswith("Task Title,Description,Week")
+    assert r.status_code == 200 and r.data.decode("utf-8-sig").splitlines()[0].startswith("Task Title,Description,Week,Estimated Hours")
     assert client.get(url, headers=world["H"]["s3"]).status_code == 404
 
 
@@ -88,9 +88,9 @@ def test_bulk_upload_creates_tasks_with_assignees_and_week_dates(client, world):
     from datetime import date
     p.start_date = date(2026, 1, 5)
     db.session.commit()
-    text = ("Task Title,Description,Week,Priority,Status,Assigned To,Start Date,Due Date\n"
-            "Build API,endpoints,2,high,In Progress,s1@x.com;S2,,\n"
-            "Write docs,,,low,,,2026-01-06,2026-01-09\n")
+    text = ("Task Title,Description,Week,Priority,Status,Assigned To,Start Date,Due Date,Estimated Hours\n"
+            "Build API,endpoints,2,high,In Progress,s1@x.com;S2,,,8\n"
+            "Write docs,,,low,,,2026-01-06,2026-01-09,2.5\n")
     r = upload(client, world, "s1", p, text)
     assert r.status_code == 200, r.get_json()
     assert r.get_json()["data"]["created"] == 2
@@ -102,11 +102,11 @@ def test_bulk_upload_creates_tasks_with_assignees_and_week_dates(client, world):
 
 
 def test_bulk_upload_is_all_or_nothing_and_reports_rows(client, world):         # noqa: F811
-    text = ("Task Title,Priority,Assigned To,Week\n"
-            "Good one,high,s1@x.com,1\n"
-            ",low,,\n"
-            "Bad assignee,low,s3@x.com,\n"
-            "Bad priority,urgent,,9\n")
+    text = ("Task Title,Priority,Assigned To,Week,Estimated Hours\n"
+            "Good one,high,s1@x.com,1,3\n"
+            ",low,,,3\n"
+            "Bad assignee,low,s3@x.com,,3\n"
+            "Bad priority,urgent,,9,3\n")
     r = upload(client, world, "m1", world["team"], text)
     data = r.get_json()["data"]
     assert r.status_code == 200 and data["created"] == 0
@@ -116,7 +116,7 @@ def test_bulk_upload_is_all_or_nothing_and_reports_rows(client, world):         
 
 
 def test_bulk_upload_permissions_and_bad_files(client, world):                  # noqa: F811
-    good = "Task Title\nOne\n"
+    good = "Task Title,Estimated Hours\nOne,2\n"
     assert upload(client, world, "s3", world["team"], good).status_code == 404                  # not on the project
     assert upload(client, world, "s3", world["locked"], good).status_code == 403                # board still locked
     assert upload(client, world, "la", world["team"], good).status_code == 403                  # leads are read-only

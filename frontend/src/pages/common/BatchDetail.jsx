@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { CalendarDays, Download, Plus, Repeat, Trash2, UserPlus } from 'lucide-react'
+import { CalendarDays, Download, Pencil, Plus, Repeat,Trash2, UserPlus } from 'lucide-react'
 import { batchMentorService, batchService, projectService, reportService, studentService, userService } from '../../services/adminService'
 import { errorMessage, fieldErrors } from '../../services/api'
 import { useAuth } from '../../context/AuthContext'
@@ -105,7 +105,7 @@ function MentorsTab({ batch, canManage }) {
   )
 }
 
-/** The domain lead (or admin) sets when projects in this batch start and end; allocation defaults to it. */
+/** When projects in this batch start and end (entered at batch creation); the domain lead or admin can change it. */
 function ProjectDatesCard({ batch, canManage, onSaved }) {
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState({ start: batch.project_start_date || '', end: batch.project_end_date || '' })
@@ -113,6 +113,11 @@ function ProjectDatesCard({ batch, canManage, onSaved }) {
   const [error, setError] = useState('')
   const [errs, setErrs] = useState({})
   const isSet = batch.project_start_date && batch.project_end_date
+
+  const openEditor = () => {
+    setForm({ start: batch.project_start_date || '', end: batch.project_end_date || '' })
+    setError(''); setErrs({}); setEditing(true)
+  }
 
   const save = async (e) => {
     e.preventDefault(); setBusy(true); setError(''); setErrs({})
@@ -129,7 +134,7 @@ function ProjectDatesCard({ batch, canManage, onSaved }) {
           <div><div className="text-slate-500">Project start</div><div className="font-medium">{batch.project_start_date || 'Not set'}</div></div>
           <div className="ml-6"><div className="text-slate-500">Project end</div><div className="font-medium">{batch.project_end_date || 'Not set'}</div></div>
         </div>
-        {canManage && <button className="btn-secondary" onClick={() => setEditing(true)}>{isSet ? 'Change dates' : 'Set project dates'}</button>}
+        {canManage && <button className="btn-secondary" onClick={openEditor}><Pencil className="h-4 w-4" aria-hidden />{isSet ? 'Edit dates' : 'Set project dates'}</button>}
       </div>
       {editing && (
         <Modal title="Project start and end dates" onClose={() => setEditing(false)}>

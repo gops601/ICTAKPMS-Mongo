@@ -1,6 +1,9 @@
 # ICTAKPMS – Development Status
 
-_Last updated: 2026-11-20_  ·  Current: Phase 8 complete
+_Last updated: 2026-11-25_  ·  Current: Phase 8 complete; database moved to MongoDB Atlas
+
+> Entries up to *Post-Phase-8 requests* describe the work as it was done, on MySQL / SQLAlchemy. The current database is
+> described under *Move to MongoDB* and in `ARCHITECTURE.md`.
 
 ## Completed
 
@@ -63,7 +66,7 @@ _Last updated: 2026-11-20_  ·  Current: Phase 8 complete
   student, same-domain + active statement checks, start date → target end (+4 weeks), auto-created Scrum board,
   4 review slots with due dates, assignment history, change problem statement until SRS is submitted.
 - Project list/detail/timeline APIs (role-scoped), progress % (configurable weights in `system_settings`),
-  delayed detection (overdue reviews, SRS not approved after week 1, overdue tasks).
+  delayed detection (overdue reviews, SRS not submitted / not approved after week 1, GitHub repository not added in week 1, overdue tasks).
 - **Notifications:** service + API (list, unread count, mark read/all) + bell with live unread badge and page.
   Triggers: batch assigned to domain (leads), mentor assigned (mentor, students), project allocated (students,
   mentor, leads), problem changed, mentor changed, project reopened.
@@ -189,6 +192,17 @@ _Last updated: 2026-11-20_  ·  Current: Phase 8 complete
   (approve / reject with note), **Date Requests** for mentors; lead dashboard tile *Date changes to approve*.
 - Tests: backend 321, frontend 217 passing; verified live on MySQL.
 
+### Move to MongoDB (2026-11-25)
+- MySQL, SQLAlchemy and Alembic replaced by **MongoDB Atlas** and a PyMongo data layer (`backend/app/odm`). Integer ids,
+  API and frontend unchanged. Docker Compose now runs only the backend and frontend.
+- All queries rewritten; transactions with request replay on write conflicts; delete rules and unique keys preserved.
+- Bulk student enrolment/import, allocation and task upload write in batches (MongoDB's 60-second transaction limit).
+  Portal sync now commits each batch and student separately.
+- `scripts/migrate_mysql_to_mongo.py` copies an existing MySQL database; it was used to move the current data
+  (300 documents).
+- Tests: backend 464 passing, 1 failing (`test_only_students_upload_and_only_mentors_review`, which also failed before
+  the move: an admin approving a proposal gets 200 where the test expects 403). Frontend unchanged, tests not rerun.
+
 ## Pending
 Phase 9 as per roadmap (problem statements → allocation/lifecycle evaluations →
 notifications/hardening).
@@ -198,7 +212,9 @@ notifications/hardening).
 - Password-reset email is logged, not sent (SMTP mailer to be added).
 - Temporary passwords are returned once in API responses (import confirm, user/student create, reset); never stored in clear.
 - Domain leads/mentors cannot yet browse batches in the UI (their pages arrive in Phase 4); the API is already scoped.
-- Tests run on SQLite; MySQL-specific behaviour is verified via migration + smoke tests in Docker.
+- Backend tests need a MongoDB replica set (see `README.md`).
+- Very large batch imports can exceed MongoDB's 60-second transaction limit; split the file.
+- Against Atlas the slowest pages (dashboards, reports) make 25-40 database round trips; host the app near the cluster.
 - Host port 8080 may be occupied on some machines; change `APP_PORT`.
 
 ## Next
@@ -212,8 +228,9 @@ Phase 9: scheduler for due/overdue notifications, audit-log viewer, security rev
 - The SRS "first week" deadline is advisory: late submissions are allowed but the project is flagged delayed.
 - GitHub can only be added after SRS approval (matches the workflow); relax in `srs_service.set_github` if needed.
 - Drag & drop uses native HTML5 events (no extra dependency); the per-card select is the accessible/touch alternative. Swap in @dnd-kit if richer touch drag is required.
-- Concurrency-sensitive code paths are only exercised for real on MySQL; SQLite tests cannot reproduce lock/snapshot behaviour (verified live).
+- The automated tests do not run requests in parallel; write-conflict replay was checked by hand (16 parallel task creates and moves).
 - Reviews have no relationship attribute on `Project`; they are queried by `project_id` (kept simple, indexed).
+- Referential integrity is enforced by the application: editing documents directly in Atlas can break links.
 - "Weekly review due" / "deadline approaching" notifications still need the Phase 9 scheduler.
 - Charts were verified through component tests and table views; I have not reviewed the rendered charts in a browser. Dark mode is not implemented (light theme only).
 - Dashboard/report queries are computed on demand (no caching); fine for institute scale, add caching/materialised views if data grows into the tens of thousands of projects.

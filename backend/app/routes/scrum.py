@@ -27,6 +27,7 @@ class TaskCreateSchema(_Base):
     description = fields.String(allow_none=True)
     priority = fields.String()
     status = fields.String()
+    estimated_hours = fields.Raw(allow_none=True)      # validated by the service (required)
     assigned_student_id = fields.Integer(allow_none=True)
     assigned_student_ids = fields.List(fields.Integer())
     start_date = fields.String(allow_none=True)
@@ -41,6 +42,7 @@ class TaskUpdateSchema(_Base):
     assigned_student_ids = fields.List(fields.Integer())
     start_date = fields.String(allow_none=True)
     due_date = fields.String(allow_none=True)
+    estimated_hours = fields.Raw(allow_none=True)
     version = fields.Integer()
 
 
@@ -69,6 +71,13 @@ def get_board(project_id):
     project = ensure_project_access(user, project_id)
     db.session.commit()   # board_for may create a missing board
     return ok(svc.board_view(project, user))
+
+
+@bp.get("/projects/<int:project_id>/burn")
+@bp.doc(security=SEC, description="Burndown / burnup data in estimated hours, one point per day.")
+@login_required
+def get_burn(project_id):
+    return ok(svc.burn_data(ensure_project_access(current_user(), project_id)))
 
 
 @bp.post("/projects/<int:project_id>/tasks")

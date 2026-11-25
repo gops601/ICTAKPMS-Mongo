@@ -49,7 +49,7 @@ export default function BulkTasksModal({ projectId, onClose, onDone }) {
             <button className="btn-secondary" onClick={() => template('xlsx')}><Download className="h-4 w-4" />Excel</button>
             <button className="btn-secondary" onClick={() => template('csv')}><Download className="h-4 w-4" />CSV</button>
           </div>
-          <p className="mt-1 text-xs text-slate-500">One row per task. Week (1, 2, …) fills the start and due dates for you; Assigned To takes team members&apos; emails or registration numbers, separated by commas. Remove the example row. Up to 200 tasks.</p>
+          <p className="mt-1 text-xs text-slate-500">One row per task. Estimated Hours is required. Week (1, 2, …) fills the start and due dates for you; Assigned To takes team members&apos; emails or registration numbers, separated by commas. Remove the example row. Up to 200 tasks.</p>
         </div>
         <div>
           <label htmlFor="bulk-file" className="label">2. Upload the filled file (.xlsx or .csv)</label>

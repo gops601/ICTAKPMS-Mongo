@@ -10,6 +10,7 @@ import Spinner from './Spinner'
 import StatusBadge from './StatusBadge'
 import { ProgressBar, StageBadge } from './ProjectBadges'
 import GithubPanel from './GithubPanel'
+import FirstWeekCard from './FirstWeekCard'
 import FeedbackPanel from './FeedbackPanel'
 import ConfirmDialog from './ConfirmDialog'
 import ProjectMentorsModal from './ProjectMentorsModal'
@@ -122,6 +123,8 @@ export default function ProjectView({ id }) {
         <Alert type="warning"><span className="flex items-start gap-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />{project.delay_reasons.join(' · ')}</span></Alert>
       )}
 
+      <FirstWeekCard firstWeek={project.first_week} projectId={project.id} isStudent={role === 'student'} />
+
       {project.available_actions.length > 0 && (
         <div className="card space-y-3" aria-label="Next steps">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Next step</h2>
@@ -209,7 +212,7 @@ export default function ProjectView({ id }) {
         <Link className="btn-secondary" to={`/reviews/project/${project.id}`}>{role === 'mentor' || user?.is_mentor ? 'Evaluate' : 'View reviews'}</Link>
       </div>
 
-      <GithubPanel projectId={project.id} />
+      <GithubPanel projectId={project.id} onSaved={load} />
 
       <div className="card">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Weekly review schedule</h2>

@@ -27,9 +27,10 @@ class ProposalReviewSchema(Schema):
 def proposal_to_dict(p):
     s = p.student
     return {"id": p.id, "title": p.title, "summary": p.summary, "status": p.status, "remarks": p.remarks,
-            "file": {"id": p.file.id, "name": p.file.original_name, "size_bytes": p.file.size_bytes},
+            "file": {"id": p.file.id, "name": p.file.original_name, "size_bytes": p.file.size_bytes, "url": p.file.external_url},
             "data_collection": p.data_collection or [],
-            "datasets": [{"id": d.id, "name": d.file.original_name, "size_bytes": d.file.size_bytes} for d in p.datasets],
+            "datasets": [{"id": d.id, "name": d.file.original_name, "size_bytes": d.file.size_bytes, "url": d.file.external_url}
+                         for d in p.datasets],
             "subdomain": {"id": p.subdomain.id, "name": p.subdomain.name} if p.subdomain else None,
             "shelf": {"id": p.problem_statement.id, "ps_code": p.problem_statement.ps_code} if p.problem_statement else None,
             "is_group": p.is_group, "members": proposal_service.members_view(p),
@@ -126,7 +127,7 @@ def my_proposals():
 
 @bp.post("")
 @bp.doc(security=SEC, description="multipart/form-data: title, summary, subdomain_id (when the domain has subdomains), file (detailed "
-                                  "document) and any number (up to 10) of `datasets` files. When datasets are attached, `data_sheet` (the filled Excel data-collection template) is required. Approval puts it on the Project Shelf.")
+                                  "document) or `url` (a link to it), and up to 10 datasets as `datasets` files and/or `dataset_links`. When datasets are attached, `data_sheet` (the filled Excel data-collection template) is required. Approval puts it on the Project Shelf.")
 @roles_required("student")
 def submit_proposal():
     user = current_user()
@@ -136,7 +137,8 @@ def submit_proposal():
     p = proposal_service.submit(student, request.form.get("title"), request.form.get("summary"),
                                 request.files.get("file"), user, request.files.getlist("datasets"),
                                 request.form.get("subdomain_id", type=int), request.files.get("data_sheet"),
-                                request.form.get("project_mode") or "individual", _parse_members(request.form.get("members")))
+                                request.form.get("project_mode") or "individual", _parse_members(request.form.get("members")),
+                                url=request.form.get("url"), dataset_links=request.form.getlist("dataset_links"))
     audit(user.id, "proposal.submit", "student_proposal", p.id)
     db.session.commit()
     return ok(proposal_to_dict(p), "Problem statement submitted for mentor approval", 201)

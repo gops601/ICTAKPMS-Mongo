@@ -98,6 +98,9 @@ Limits: 200 batches and 5 000 students per request.
 }
 ```
 
+Each batch and each student is saved on its own: a problem with one does not undo the others, and if a request is cut
+off you can safely send it again.
+
 `problems` is a list of human-readable strings (e.g. `Batch EXT-101: domain 'XYZ' was not found here …`).
 
 ### Errors

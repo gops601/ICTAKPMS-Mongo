@@ -1,7 +1,7 @@
 # Deployment Guide
 
 The application runs as two Docker containers, started with one `docker compose` command, and stores its data in
-MongoDB Atlas:
+MongoDB Atlas. MongoDB is not dockerised.
 
 | Service    | Image / build          | Role                                                              |
 |------------|------------------------|-------------------------------------------------------------------|
@@ -36,7 +36,7 @@ docker compose version
 ```bash
 git clone https://github.com/gops601/ICTAKPMS_Flask.git
 cd ICTAKPMS_Flask
-git checkout main
+git checkout main                    # use the branch that holds the MongoDB version until it is merged
 ```
 
 ---
@@ -213,14 +213,15 @@ data, also restore the backup taken before the update.
 Two things hold data: the **database** and the **uploads volume** (SRS files, datasets, problem statement
 documents). Back up both.
 
-Database: turn on **Cloud Backup** for the cluster in Atlas (dedicated tiers). On tiers without it, dump with the
-MongoDB tools (`MONGODB_URI` and `MONGODB_DB` as in `.env`):
+Database: turn on **Cloud Backup** for the cluster in Atlas (dedicated tiers). On tiers without it, install the
+[MongoDB Database Tools](https://www.mongodb.com/try/download/database-tools) on the server and dump the database.
+Run these in the project folder:
 
 ```bash
 mkdir -p ~/backups
-set -a; . ./.env; set +a
-docker run --rm -v ~/backups:/backup mongo:7 \
-  mongodump --uri="$MONGODB_URI" --db="${MONGODB_DB:-plms}" --gzip --archive=/backup/plms-$(date +%F).archive.gz
+MONGODB_URI=$(grep '^MONGODB_URI=' .env | cut -d= -f2-)
+MONGODB_DB=$(grep '^MONGODB_DB=' .env | cut -d= -f2-)
+mongodump --uri="$MONGODB_URI" --db="${MONGODB_DB:-plms}" --gzip --archive="$HOME/backups/plms-$(date +%F).archive.gz"
 ```
 
 Uploaded files:
@@ -239,10 +240,11 @@ Copy backups off the server (object storage or another machine) and test a resto
 
 ### Restore
 
+`--drop` replaces the collections in the database with those from the archive.
+
 ```bash
-set -a; . ./.env; set +a
-docker run --rm -v ~/backups:/backup mongo:7 \
-  mongorestore --uri="$MONGODB_URI" --drop --gzip --archive=/backup/plms-YYYY-MM-DD.archive.gz
+MONGODB_URI=$(grep '^MONGODB_URI=' .env | cut -d= -f2-)
+mongorestore --uri="$MONGODB_URI" --drop --gzip --archive="$HOME/backups/plms-YYYY-MM-DD.archive.gz"
 
 docker run --rm -v projectmanagementapp_uploads_data:/data -v ~/backups:/backup alpine \
   sh -c 'cd /data && tar xzf /backup/uploads-YYYY-MM-DD.tar.gz'
@@ -292,6 +294,8 @@ Containers have `restart: unless-stopped`, so they come back after a server rebo
 | Upload fails with "413" | Raise `MAX_UPLOAD_MB` (backend), `client_max_body_size` in `frontend/nginx.conf` and in your reverse proxy, then rebuild |
 | "Too many requests" on login | `LOGIN_RATE_LIMIT` reached; wait or raise it. The limiter is per worker (in-memory) |
 | Database password changed | Update `MONGODB_URI` in `.env`, then `docker compose up -d backend` |
+| Large bulk upload fails after about a minute | MongoDB cancels a transaction after 60 seconds. Split the file (batch imports are the slowest) and keep the server in the cluster's region |
+| Pages are slow | Check the distance between the server and the Atlas region; every database call is a network round trip |
 | Disk filling up | `docker system df`; prune old images with `docker image prune -f` |
 
 Backend API documentation is served at `/api/docs`. Consider restricting it at the reverse proxy if you do

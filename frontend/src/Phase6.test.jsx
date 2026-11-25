@@ -30,14 +30,14 @@ vi.mock('./services/adminService', async () => {
   const actual = await vi.importActual('./services/adminService')
   return {
     ...actual,
-    scrumService: { board: vi.fn(), task: vi.fn(), create: vi.fn(), update: vi.fn(), move: vi.fn(), remove: vi.fn(), comment: vi.fn(), overview: vi.fn() },
+    scrumService: { board: vi.fn(), task: vi.fn(), create: vi.fn(), update: vi.fn(), move: vi.fn(), remove: vi.fn(), comment: vi.fn(), overview: vi.fn(), burn: vi.fn() },
     notificationService: { unreadCount: vi.fn().mockResolvedValue(0), list: vi.fn(), markRead: vi.fn(), readAll: vi.fn() },
   }
 })
 
 const task = (id, title, status, over = {}) => ({
   id, title, status, position: 0, priority: 'medium', description: null, assignee: null, created_by: { id: 1, name: 'Stu' },
-  start_date: null, due_date: null, completed_at: null, is_overdue: false, comment_count: 0, version: 1, created_at: '2026-03-02T10:00:00', ...over,
+  estimated_hours: 4, start_date: null, due_date: null, completed_at: null, is_overdue: false, comment_count: 0, version: 1, created_at: '2026-03-02T10:00:00', ...over,
 })
 const LABELS = { backlog: 'Backlog', todo: 'To Do', in_progress: 'In Progress', in_review: 'In Review', completed: 'Completed' }
 const makeBoard = (tasks, perms = {}, over = {}) => ({
@@ -166,6 +166,22 @@ describe('drag and drop & moving', () => {
   })
 })
 
+describe('burn charts', () => {
+  it('shows estimates on cards and loads burndown and burnup on demand', async () => {
+    svc.scrumService.board.mockResolvedValue(makeBoard([task(1, 'A', 'todo', { estimated_hours: 6 })]))
+    svc.scrumService.burn.mockResolvedValue({ total_hours: 6, completed_hours: 0, remaining_hours: 6, unestimated: 1,
+      points: [{ date: '2026-03-02', ideal: 6, scope: 6, completed: 0, remaining: 6 }] })
+    renderBoard()
+    expect(await screen.findByText('6 h')).toBeInTheDocument()
+    expect(svc.scrumService.burn).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByRole('button', { name: 'Burn charts' }))
+    expect(await screen.findByRole('region', { name: 'Burndown' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Burnup' })).toBeInTheDocument()
+    expect(screen.getByText(/1 task\(s\) have no estimated hours/)).toBeInTheDocument()
+    expect(svc.scrumService.burn).toHaveBeenCalledWith(7)
+  })
+})
+
 describe('creating and editing tasks', () => {
   it('creates a task with all fields and refreshes the board', async () => {
     svc.scrumService.board.mockResolvedValue(makeBoard([]))
@@ -179,12 +195,13 @@ describe('creating and editing tasks', () => {
     await userEvent.click(within(dialog).getByRole('checkbox', { name: 'Ben J' }))
     await userEvent.click(within(dialog).getByRole('checkbox', { name: 'Asha K' }))
     await userEvent.selectOptions(within(dialog).getByLabelText(/column/i), 'todo')
+    await userEvent.type(within(dialog).getByLabelText(/estimated duration/i), '6.5')
     fireEvent.change(within(dialog).getByLabelText(/start date/i), { target: { value: '2026-03-02' } })
     fireEvent.change(within(dialog).getByLabelText(/due date/i), { target: { value: '2026-03-09' } })
     await userEvent.click(within(dialog).getByRole('button', { name: /create task/i }))
     await waitFor(() => expect(svc.scrumService.create).toHaveBeenCalledWith(7, {
       title: 'Build login', description: 'JWT based', priority: 'high', assigned_student_ids: [2, 1],
-      start_date: '2026-03-02', due_date: '2026-03-09', status: 'todo' }))
+      estimated_hours: 6.5, start_date: '2026-03-02', due_date: '2026-03-09', status: 'todo' }))
     await waitFor(() => expect(svc.scrumService.board).toHaveBeenCalledTimes(2))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
@@ -195,6 +212,7 @@ describe('creating and editing tasks', () => {
     renderBoard()
     await userEvent.click(await screen.findByRole('button', { name: /new task/i }))
     await userEvent.type(screen.getByLabelText(/title/i), 'X')
+    await userEvent.type(screen.getByLabelText(/estimated duration/i), '2')
     await userEvent.click(screen.getByRole('button', { name: /create task/i }))
     expect((await screen.findAllByText(/due date cannot be before/i)).length).toBeGreaterThan(0)
     expect(screen.getByRole('dialog')).toBeInTheDocument()

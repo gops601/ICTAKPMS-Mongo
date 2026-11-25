@@ -47,7 +47,7 @@ class PSStatusSchema(_Base):
 def file_to_dict(link):
     f = link.file
     return {"id": link.id, "file_id": f.id, "name": f.original_name, "size_bytes": f.size_bytes,
-            "mime_type": f.mime_type, "description": link.description, "uploaded_at": link.created_at.isoformat()}
+            "mime_type": f.mime_type, "url": f.external_url, "description": link.description, "uploaded_at": link.created_at.isoformat()}
 
 
 def ps_to_dict(ps, detail=False, can_edit=False):

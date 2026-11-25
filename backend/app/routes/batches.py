@@ -21,7 +21,7 @@ def _notify_leads(batch):
     from app.services.notification_service import domain_lead_user_ids, domain_mentor_user_ids, notify
     notify(domain_lead_user_ids(batch.domain_id), "batch_assigned", "Batch assigned to your domain",
            f"Batch {batch.code} – {batch.name} was assigned to {batch.domain.name}. "
-           "Please set the project start and end dates for this batch.", f"/lead/batches/{batch.id}")
+           "Please check the project start and end dates for this batch.", f"/lead/batches/{batch.id}")
     notify(domain_mentor_user_ids(batch.domain_id), "batch_in_domain", "New batch in your domain",
            f"Batch {batch.code} – {batch.name} was added to {batch.domain.name}. The domain lead will assign mentors to it.", None)
 

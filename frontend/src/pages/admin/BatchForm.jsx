@@ -53,7 +53,7 @@ export default function BatchForm() {
         setOus(o); setDomains(d)
         if (editing) {
           const b = await batchService.get(id)
-          setForm({ code: b.code, name: b.name, ou_id: b.ou.id, domain_id: b.domain?.id || '', subdomain_id: b.subdomain?.id || '', mode: b.mode || 'online', start_date: b.start_date || '', end_date: b.end_date || '', details: b.details })
+          setForm({ code: b.code, name: b.name, ou_id: b.ou.id, domain_id: b.domain?.id || '', subdomain_id: b.subdomain?.id || '', mode: b.mode || 'online', start_date: b.project_start_date || '', end_date: b.project_end_date || '', details: b.details })
         }
       } catch (e) { setError(errorMessage(e)) } finally { setLoading(false) }
     })()
@@ -158,11 +158,11 @@ export default function BatchForm() {
             <input id="name" className="input" required value={form.name} onChange={set('name')} />{err('name')}
           </div>
           <div>
-            <label htmlFor="sd" className="label">Start date</label>
+            <label htmlFor="sd" className="label">Project start date</label>
             <input id="sd" type="date" className="input" value={form.start_date} onChange={set('start_date')} />{err('start_date')}
           </div>
           <div>
-            <label htmlFor="ed" className="label">End date</label>
+            <label htmlFor="ed" className="label">Project end date</label>
             <input id="ed" type="date" className="input" value={form.end_date} onChange={set('end_date')} />{err('end_date')}
           </div>
         </div>

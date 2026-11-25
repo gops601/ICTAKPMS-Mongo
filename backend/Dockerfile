@@ -7,7 +7,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
-RUN chmod +x entrypoint.sh \
+# strip Windows CRLF endings: a "\r" after #!/bin/sh makes exec fail with "no such file or directory"
+RUN sed -i 's/\r$//' entrypoint.sh \
+    && chmod +x entrypoint.sh \
     && useradd --create-home appuser \
     && mkdir -p /app/uploads \
     && chown -R appuser /app

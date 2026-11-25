@@ -1,4 +1,5 @@
 import io
+from datetime import date
 
 import pytest
 
@@ -172,15 +173,15 @@ def test_allocation_withdraws_pending_proposal(client, world):
     assert mine["proposals"][0]["status"] == "withdrawn"
 
 
-def test_only_students_upload_and_only_mentors_review(client, world):
+def test_only_students_upload_and_students_cannot_review(client, world):
     r = client.post("/api/proposals", headers=world["H"]["m1"], content_type="multipart/form-data",
                     data={"title": "t", "file": (io.BytesIO(PDF), "a.pdf")})
     assert r.status_code == 403
     pid = propose(client, world).get_json()["data"]["id"]
-    for who in ("admin", "lead", "s1"):
-        assert client.post(f"/api/proposals/{pid}/review", headers=world["H"][who],
-                           json={"decision": "approve"}).status_code == 403
-    assert len(client.get("/api/proposals", headers=world["H"]["lead"]).get_json()["data"]) == 1  # read-only visibility
+    assert client.post(f"/api/proposals/{pid}/review", headers=world["H"]["s1"], json={"decision": "approve"}).status_code == 403
+    assert len(client.get("/api/proposals", headers=world["H"]["lead"]).get_json()["data"]) == 1
+    # besides mentors, the domain lead and admins may decide
+    assert client.post(f"/api/proposals/{pid}/review", headers=world["H"]["lead"], json={"decision": "approve"}).status_code == 200
 
 
 # ------------------------------------------------------- batch project dates
@@ -206,6 +207,36 @@ def test_lead_notified_on_batch_creation_and_sets_project_dates(client, world):
     for who in ("m1", "s1"):
         assert client.put(f"/api/batches/{bid}/project-dates", headers=world["H"][who],
                           json={"project_start_date": "2026-12-01", "project_end_date": "2027-02-01"}).status_code == 403
+
+
+def test_dates_entered_at_batch_creation_are_the_project_dates(client, world):
+    ou = db.session.query(OrganisationalUnit).first()
+    A = world["H"]["admin"]
+    r = client.post("/api/batches", headers=A,
+                    json={"name": "Dated", "ou_id": ou.id, "domain_id": domain("AIML").id,
+                          "start_date": "2026-12-01", "end_date": "2027-01-15", "details": {"programme_name": "P"}})
+    assert r.status_code == 201, r.get_json()
+    bid = r.get_json()["data"]["id"]
+
+    def window():
+        d = client.get(f"/api/batches/{bid}", headers=A).get_json()["data"]
+        return d["project_start_date"], d["project_end_date"]
+
+    assert window() == ("2026-12-01", "2027-01-15")
+    client.put(f"/api/batches/{bid}/project-dates", headers=world["H"]["lead"],
+               json={"project_start_date": "2026-12-05", "project_end_date": "2027-02-01"})
+    client.put(f"/api/batches/{bid}", headers=A, json={"name": "Renamed"})
+    assert window() == ("2026-12-05", "2027-02-01")
+    client.put(f"/api/batches/{bid}", headers=A, json={"end_date": "2027-03-01"})
+    assert window() == ("2026-12-05", "2027-03-01")
+
+    # batches saved before the dates were linked have only start_date / end_date
+    old = world["batch"]
+    old.start_date, old.end_date = date(2026, 12, 1), date(2027, 1, 1)
+    old.project_start_date = old.project_end_date = None
+    db.session.commit()
+    d = client.get(f"/api/batches/{old.id}", headers=A).get_json()["data"]
+    assert (d["project_start_date"], d["project_end_date"]) == ("2026-12-01", "2027-01-01")
 
 
 def test_allocation_uses_batch_project_dates(client, world):

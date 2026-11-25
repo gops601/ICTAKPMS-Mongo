@@ -2,10 +2,11 @@
 
 ```
 Browser (React/Vite/Tailwind) ──► nginx (SPA + /api proxy) ──► Flask/gunicorn ──► MongoDB Atlas
+        └──────────────────────── Docker containers ───────────────────────┘        (hosted)
 ```
 
 Backend layering: **routes** (thin: parse, authorise, serialise) → **services** (business rules, transactions)
-→ **models**. Cross-cutting: `permissions/` (role + scope guards), `utils/` (envelope, errors, audit).
+→ **models** → **odm** (data layer over PyMongo). Cross-cutting: `permissions/` (role + scope guards), `utils/` (envelope, errors, audit).
 Storage will sit behind a `StorageBackend` interface (local now, S3-compatible later).
 
 ## Decisions
@@ -17,7 +18,28 @@ Storage will sit behind a `StorageBackend` interface (local now, S3-compatible l
 - API docs: flask-smorest (OpenAPI at `/api/openapi.json`, UI at `/api/docs`).
 - Out-of-scope resource access returns 404, not 403.
 
-## ER diagram
+## Database (MongoDB)
+
+- **One collection per model**, named as in the diagram below (lower case). `_id` is an integer taken from the
+  `_counters` collection, so API URLs and links are plain numbers. Related data is **referenced by id, not embedded**:
+  the data is queried from many directions, and this kept ids and API payloads unchanged when the app moved from MySQL.
+- **Data layer (`app/odm`)** rather than an off-the-shelf ODM, because the services rely on a unit of work: change
+  tracking, one transaction per request, locks, and delete rules.
+  - A query reads one collection; related filters are sub-queries (`in_(query)`). Ordering by a referenced field uses
+    `$lookup` (`order_by_related`).
+  - Relationships load lazily, in batches for all loaded objects of a model; `prefetch()` loads them up front.
+  - An identical read repeated with no write in between is answered from the request's cache.
+- **Transactions** start at the first write or lock and end at `commit()`, so the cluster must be a replica set (every
+  Atlas cluster is). MongoDB does not queue writers: of two colliding transactions one fails at once and its request is
+  replayed (`odm/retry.py`), unless it had already committed something.
+- **60-second limit:** a flush writes each collection in one command, and bulk operations (student enrolment and import,
+  allocation, task upload) avoid per-row round trips. Portal sync commits each batch and student separately.
+- **Integrity:** `ondelete` rules (cascade / set null / restrict) are applied by the application, so change data through
+  the app. Unique keys are indexes. Collections use a case-insensitive collation.
+- **Schema:** `flask init-db` creates collections and indexes. There are no migrations; code must read documents that
+  lack a newly added field.
+
+## Data model
 
 ```mermaid
 erDiagram
@@ -61,7 +83,16 @@ erDiagram
     IMPORT_JOBS ||--o{ IMPORT_ERRORS : has
     USERS ||--o{ AUDIT_LOGS : performs
     USERS ||--o{ FILE_ATTACHMENTS : uploads
+    DOMAINS ||--o{ SUBDOMAINS : contains
+    PROJECTS ||--o{ PROJECT_MENTORS : "assigned mentors"
+    MENTORS ||--o{ PROJECT_MENTORS : assigned
+    PROJECTS ||--o{ MENTOR_FEEDBACK : receives
+    SCRUM_TASKS ||--o{ SCRUM_TASK_ASSIGNEES : "assigned to"
+    STUDENTS ||--o{ STUDENT_PROPOSALS : proposes
+    STUDENT_PROPOSALS ||--o{ PROPOSAL_DATASETS : has
+    PROJECT_REVIEWS ||--o{ REVIEW_STUDENT_REMARKS : "per student"
+    PROJECT_REVIEWS ||--o{ REVIEW_DATE_REQUESTS : "date changes"
+    EXTERNAL_PORTALS ||--o{ BATCHES : enrols
 ```
 
-Additional tables beyond the original list: `system_settings`, `password_reset_tokens`,
-`evaluation_revisions`, `evaluation_templates`, `project_lifecycle_transitions`.
+Collections not shown: `system_settings`, `password_reset_tokens`, `evaluation_templates` (and `_counters`).

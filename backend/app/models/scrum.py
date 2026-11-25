@@ -24,6 +24,7 @@ class ScrumTask(TimestampMixin, db.Model):
     priority = db.Column(db.String(10), default="medium", nullable=False)
     status = db.Column(db.String(15), default="backlog", nullable=False, index=True)
     position = db.Column(db.Integer, default=0, nullable=False)
+    estimated_hours = db.Column(db.Numeric(6, 2))   # required for new tasks; older ones may have none
     start_date = db.Column(db.Date)
     due_date = db.Column(db.Date, index=True)
     completed_at = db.Column(db.DateTime)

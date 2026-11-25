@@ -101,6 +101,14 @@ export async function downloadFile(url, params, fallbackName) {
   URL.revokeObjectURL(link.href)
 }
 
+/** A link added instead of a file opens in a new tab. */
+export function openLink(url) {
+  window.open(url, '_blank', 'noopener,noreferrer')
+}
+
+/** Adds a file, or a link given as a string, to a multipart form. */
+const appendSource = (form, source, fileKey = 'file', linkKey = 'url') => form.append(typeof source === 'string' ? linkKey : fileKey, source)
+
 export function downloadTextFile(text, filename, mime = 'text/csv') {
   const link = document.createElement('a')
   link.href = URL.createObjectURL(new Blob([text], { type: mime }))
@@ -119,15 +127,15 @@ export const psService = {
   setStatus: (id, status) => api.patch(`/problem-statements/${id}/status`, { status }).then(d),
   remove: (id) => api.delete(`/problem-statements/${id}`).then(d),
   industries: () => api.get('/problem-statements/industries').then(d),
-  upload: (id, kind, file, description) => {
+  upload: (id, kind, source, description) => {
     const form = new FormData()
-    form.append('file', file)
+    appendSource(form, source)
     if (description) form.append('description', description)
     return api.post(`/problem-statements/${id}/${kind}`, form).then(d)
   },
   removeFile: (id, kind, linkId) => api.delete(`/problem-statements/${id}/${kind}/${linkId}`).then(d),
   download: (id, kind, link) =>
-    downloadFile(`/problem-statements/${id}/${kind}/${link.id}/download`, undefined, link.name),
+    (link.url ? openLink(link.url) : downloadFile(`/problem-statements/${id}/${kind}/${link.id}/download`, undefined, link.name)),
 }
 
 export const proposalService = {
@@ -140,8 +148,8 @@ export const proposalService = {
     form.append('title', title)
     if (summary) form.append('summary', summary)
     if (subdomainId) form.append('subdomain_id', subdomainId)
-    form.append('file', file)
-    datasets.forEach((f) => form.append('datasets', f))
+    appendSource(form, file)
+    datasets.forEach((item) => appendSource(form, item, 'datasets', 'dataset_links'))
     if (dataSheet) form.append('data_sheet', dataSheet)
     if (projectMode === 'group') {
       form.append('project_mode', 'group')
@@ -151,9 +159,9 @@ export const proposalService = {
   },
   projectTemplate: (format = 'xlsx') => downloadFile('/proposals/project-template', { format }, `project_template.${format}`),
   dataTemplate: () => downloadFile('/proposals/data-template', undefined, 'data-collection-template.xlsx'),
-  downloadDataset: (p, ds) => downloadFile(`/proposals/${p.id}/datasets/${ds.id}/download`, undefined, ds.name),
+  downloadDataset: async (p, ds) => (ds.url ? openLink(ds.url) : downloadFile(`/proposals/${p.id}/datasets/${ds.id}/download`, undefined, ds.name)),
   review: (id, decision, remarks) => api.post(`/proposals/${id}/review`, { decision, remarks }).then(d),
-  download: (p) => downloadFile(`/proposals/${p.id}/download`, undefined, p.file.name),
+  download: (p) => (p.file.url ? openLink(p.file.url) : downloadFile(`/proposals/${p.id}/download`, undefined, p.file.name)),
 }
 
 export const projectService = {
@@ -195,15 +203,16 @@ export const notificationService = {
 
 export const srsService = {
   get: (projectId) => api.get(`/srs/projects/${projectId}`).then(d),
-  submit: (projectId, file, description) => {
+  submit: (projectId, source, description) => {
     const form = new FormData()
-    form.append('file', file)
+    appendSource(form, source)
     if (description) form.append('description', description)
     return api.post(`/srs/projects/${projectId}`, form).then(d)
   },
   review: (submissionId, decision, remarks) => api.post(`/srs/submissions/${submissionId}/review`, { decision, remarks }).then(d),
   queue: (params) => api.get('/srs/queue', { params }).then(withMeta),
-  download: (submission) => downloadFile(`/srs/submissions/${submission.id}/download`, undefined, submission.file.name),
+  download: (submission) => (submission.file.url ? openLink(submission.file.url)
+    : downloadFile(`/srs/submissions/${submission.id}/download`, undefined, submission.file.name)),
 }
 
 export const githubService = {
@@ -214,6 +223,7 @@ export const githubService = {
 export const scrumService = {
   board: (projectId) => api.get(`/scrum/projects/${projectId}/board`).then(d),
   task: (id) => api.get(`/scrum/tasks/${id}`).then(d),
+  burn: (projectId) => api.get(`/scrum/projects/${projectId}/burn`).then(d),
   create: (projectId, body) => api.post(`/scrum/projects/${projectId}/tasks`, body).then(d),
   update: (id, body) => api.put(`/scrum/tasks/${id}`, body).then(d),
   move: (id, status, position) => api.patch(`/scrum/tasks/${id}/move`, { status, position }).then(d),

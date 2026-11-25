@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { Calendar, GripVertical, MessageSquare, Plus, Upload } from 'lucide-react'
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
+import { Calendar, Clock, GripVertical, MessageSquare, Plus, TrendingDown, Upload } from 'lucide-react'
 import { scrumService } from '../services/adminService'
 import { errorMessage } from '../services/api'
 import Alert from './Alert'
@@ -7,6 +7,9 @@ import Spinner from './Spinner'
 import StatusBadge from './StatusBadge'
 import TaskModal from './TaskModal'
 import BulkTasksModal from './BulkTasksModal'
+
+// Recharts is large: load it only when someone opens the charts.
+const BurnCharts = lazy(() => import('./BurnCharts'))
 
 const PRIORITY_TONE = { low: 'grey', medium: 'blue', high: 'orange', critical: 'red' }
 
@@ -49,6 +52,7 @@ function TaskCard({ task, canMove, columns, onOpen, onDragStart, onDropOn, onMov
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
         <span>#{task.id}</span>
+        {task.estimated_hours != null && <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" aria-hidden />{task.estimated_hours} h</span>}
         {(task.assignees?.length ? task.assignees : task.assignee ? [task.assignee] : []).length > 0 && <span>{(task.assignees?.length ? task.assignees : [task.assignee]).map((a) => a.name).join(', ')}</span>}
         {task.due_date && (
           <span className={`inline-flex items-center gap-1 ${task.is_overdue ? 'font-medium text-red-600' : ''}`}>
@@ -67,11 +71,14 @@ function TaskCard({ task, canMove, columns, onOpen, onDragStart, onDropOn, onMov
   )
 }
 
+const boardVersion = (board) => board.columns.flatMap((c) => c.tasks.map((t) => `${t.id}:${t.status}:${t.estimated_hours}`)).join()
+
 /** Jira-style board. Drag & drop uses native HTML5 events; every card also has a "move to" select for keyboard/touch use. */
 export default function ScrumBoard({ projectId }) {
   const [board, setBoard] = useState(null)
   const [error, setError] = useState('')
   const [modal, setModal] = useState(null) // { taskId } | 'new' | 'bulk'
+  const [showCharts, setShowCharts] = useState(false)
   const dragId = useRef(null)
 
   const load = useCallback(async () => {
@@ -116,15 +123,18 @@ export default function ScrumBoard({ projectId }) {
           <span>{stats.total} tasks</span><span>{stats.completed} done ({stats.completion_pct}%)</span>
           <span className={stats.overdue ? 'font-medium text-red-600' : ''}>{stats.overdue} overdue</span>
         </div>
-        {perms.can_create && (
-          <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2">
+          <button className="btn-secondary" aria-pressed={showCharts} onClick={() => setShowCharts(!showCharts)}><TrendingDown className="h-4 w-4" />{showCharts ? 'Hide burn charts' : 'Burn charts'}</button>
+          {perms.can_create && (<>
             <button className="btn-secondary" onClick={() => setModal('bulk')}><Upload className="h-4 w-4" />Bulk upload</button>
             <button className="btn-primary" onClick={() => setModal('new')}><Plus className="h-4 w-4" />New task</button>
-          </div>
-        )}
+          </>)}
+        </div>
       </div>
       <Alert>{error}</Alert>
       {perms.reason && <Alert type="info">{perms.reason}</Alert>}
+      {/* keyed on the board so the charts reload after any change to it */}
+      {showCharts && <Suspense fallback={<Spinner />}><BurnCharts key={boardVersion(board)} projectId={projectId} /></Suspense>}
 
       <div className="grid gap-3 overflow-x-auto pb-2 md:grid-cols-5" style={{ minWidth: 0 }}>
         {board.columns.map((c) => (

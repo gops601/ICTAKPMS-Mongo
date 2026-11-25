@@ -29,6 +29,7 @@ def project_weeks(project):
 def phase_for(week):
     return WEEK_PHASES.get(week, "Implementation")
 DEFAULT_WEIGHTS = {"srs": 20, "github": 5, "scrum": 25, "reviews": 40, "final": 10}
+_SUBMITTED = lifecycle.ORDER["srs_submitted"]
 _APPROVED = lifecycle.ORDER["srs_approved"]
 
 
@@ -97,8 +98,13 @@ def project_metrics(projects, today=None):
         if p.stage != "completed":
             if overdue_reviews:
                 reasons.append(f"{overdue_reviews} weekly review(s) overdue")
-            if p.start_date and p.start_date + timedelta(weeks=1) < today and order < _APPROVED:
-                reasons.append("SRS not approved after week 1")
+            if p.start_date and p.start_date + timedelta(weeks=1) < today:       # both are due in week 1
+                if order < _SUBMITTED:
+                    reasons.append("SRS not submitted in week 1")
+                elif order < _APPROVED:
+                    reasons.append("SRS not approved after week 1")
+                if p.id not in github:
+                    reasons.append("GitHub repository not added in week 1")
             if t["overdue"]:
                 reasons.append(f"{t['overdue']} Scrum task(s) overdue")
 

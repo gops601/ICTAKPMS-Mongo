@@ -139,6 +139,7 @@ def project_to_dict(p, detail=False, role=None, metrics=None):
     if detail:
         gh = db.session.query(ProjectGithubRepository).filter_by(project_id=p.id).first()
         out["github_url"] = gh.url if gh else None
+        out["first_week"] = srs_service.project_first_week(p)
         out["implementation_started_at"] = _iso(p.implementation_started_at)
         out["reviews"] = [{"week_no": r.week_no, "due_date": _iso(r.due_date), "status": r.status}
                           for r in sorted(_reviews(p), key=lambda r: r.week_no)]

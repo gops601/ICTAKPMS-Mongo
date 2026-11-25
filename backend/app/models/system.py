@@ -25,6 +25,7 @@ class FileAttachment(TimestampMixin, db.Model):
     storage_key = db.Column(db.String(255), nullable=False)  # relative key; backend-agnostic (local / S3)
     mime_type = db.Column(db.String(120))
     size_bytes = db.Column(db.BigInteger, nullable=False)
+    external_url = db.Column(db.String(2000))   # set when a link was added instead of a file (nothing is stored, size 0)
     uploaded_by = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"))
 
 

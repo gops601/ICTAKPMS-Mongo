@@ -10,6 +10,7 @@ import StatusBadge from '../../components/StatusBadge'
 import PageHeader from '../../components/PageHeader'
 import Alert from '../../components/Alert'
 import Spinner from '../../components/Spinner'
+import FirstWeekCard from '../../components/FirstWeekCard'
 
 const fmtDate = (d) => (d ? new Date(`${d}T00:00:00`).toLocaleDateString() : '—')
 
@@ -284,6 +285,7 @@ export function StudentDashboard() {
                 <Link className="btn-secondary" to={`/project-shelf/${d.problem_statement.id}`}>Project details</Link>
               </div>
             </section>
+            <FirstWeekCard firstWeek={d.first_week} projectId={p.id} isStudent />
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               <section className="card space-y-2" aria-label="Review status">
                 <h3 className="text-sm font-semibold text-slate-900">Review status</h3>

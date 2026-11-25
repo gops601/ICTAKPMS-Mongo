@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Download, Upload } from 'lucide-react'
+import { Download, ExternalLink, Upload } from 'lucide-react'
 import { proposalService } from '../../services/adminService'
 import { errorMessage, fieldErrors } from '../../services/api'
 import PageHeader from '../../components/PageHeader'
@@ -8,6 +8,7 @@ import Alert from '../../components/Alert'
 import Spinner from '../../components/Spinner'
 import DataCollectionTable from '../../components/DataCollectionTable'
 import TeamPicker from '../../components/TeamPicker'
+import SourceToggle from '../../components/SourceToggle'
 
 const TONE = { pending: 'orange', approved: 'green', rejected: 'red', withdrawn: 'grey' }
 
@@ -18,6 +19,9 @@ export default function MyProposal() {
   const [form, setForm] = useState({ title: '', summary: '' })
   const [file, setFile] = useState(null)
   const [datasets, setDatasets] = useState([])
+  const [docMode, setDocMode] = useState('file')
+  const [docLink, setDocLink] = useState('')
+  const [datasetLinks, setDatasetLinks] = useState('')     // one per line
   const [subdomainId, setSubdomainId] = useState('')
   const dsRef = useRef(null)
   const sheetRef = useRef(null)
@@ -37,15 +41,22 @@ export default function MyProposal() {
     if (mode === 'group' && mates === null) proposalService.classmates().then(setMates).catch((e) => { setError(errorMessage(e)); setMates({ me: null, max_group_size: 6, students: [] }) })
   }, [mode, mates])
 
+  const links = datasetLinks.split('\n').map((x) => x.trim()).filter(Boolean)
+  const hasDatasets = datasets.length > 0 || links.length > 0
+
   const submit = async (e) => {
     e.preventDefault()
-    if (!file) return setError('Choose the detailed proposal document first.')
-    if (datasets.length && !sheet) return setError('Upload the filled data collection sheet (Excel) that describes your datasets.')
+    const document_ = docMode === 'link' ? docLink.trim() : file
+    if (!document_) return setError(docMode === 'link' ? 'Paste the link to your detailed proposal document first.' : 'Choose the detailed proposal document first.')
+    const allDatasets = [...datasets, ...links]
+    if (allDatasets.length > 10) return setError('At most 10 datasets (files and links together).')
+    if (allDatasets.length && !sheet) return setError('Upload the filled data collection sheet (Excel) that describes your datasets.')
     if (mode === 'group' && team.length === 0) return setError('Select the students who are in your group.')
     setBusy(true); setError(''); setErrs({}); setDone(false)
     try {
       const members = mates?.me ? [{ student_id: mates.me, role: myRole }, ...team] : team
-      await proposalService.submit(form.title, form.summary, file, datasets, subdomainId || null, sheet, mode, members)
+      await proposalService.submit(form.title, form.summary, document_, allDatasets, subdomainId || null, sheet, mode, members)
+      setDocLink(''); setDatasetLinks('')
       setMode('individual'); setMates(null); setTeam([]); setMyRole('')
       setForm({ title: '', summary: '' }); setFile(null); setDatasets([]); setSheet(null); setSubdomainId(''); setDone(true)
       if (sheetRef.current) sheetRef.current.value = ''
@@ -117,24 +128,37 @@ export default function MyProposal() {
               </select>
               {errs.subdomain_id && <p className="mt-1 text-xs text-red-600">{errs.subdomain_id}</p>}</div>
           )}
-          <div><label htmlFor="pp-file" className="label">Detailed project proposal *</label>
-            <input id="pp-file" ref={fileRef} type="file" className="text-sm" onChange={(e) => setFile(e.target.files?.[0] || null)} />
-            <p className="mt-1 text-xs text-slate-500">PDF, Word, PowerPoint, Excel, images or text · up to 25 MB.</p></div>
-          <div><label htmlFor="pp-ds" className="label">Datasets <span className="font-normal text-slate-500">(optional, up to 10 files)</span></label>
+          <div className="space-y-2">
+            <SourceToggle name="pp-source" label="How to provide the document" mode={docMode} onChange={(value) => { setDocMode(value); setFile(null); setError('') }} />
+            {docMode === 'file' ? (
+              <div><label htmlFor="pp-file" className="label">Detailed project proposal *</label>
+                <input id="pp-file" ref={fileRef} type="file" className="text-sm" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+                <p className="mt-1 text-xs text-slate-500">PDF, Word, PowerPoint, Excel, images or text · up to 25 MB.</p></div>
+            ) : (
+              <div><label htmlFor="pp-link" className="label">Link to the detailed project proposal *</label>
+                <input id="pp-link" type="url" className="input" placeholder="https://drive.google.com/…" value={docLink} onChange={(e) => setDocLink(e.target.value)} />
+                <p className="mt-1 text-xs text-slate-500">Share it so that your mentor and domain lead can open it.</p></div>
+            )}
+            {errs.url && <p className="text-xs text-red-600">{errs.url}</p>}
+          </div>
+          <div><label htmlFor="pp-ds" className="label">Datasets <span className="font-normal text-slate-500">(optional, up to 10 files and links)</span></label>
             <input id="pp-ds" ref={dsRef} type="file" multiple className="text-sm" onChange={(e) => setDatasets([...(e.target.files || [])])} />
             <p className="mt-1 text-xs text-slate-500">CSV, XLSX, JSON, XML, TXT, ZIP, Parquet · up to 50 MB each. Once a mentor approves, your project and datasets are loaded onto the Project Shelf.</p>
-            {errs.datasets && <p className="mt-1 text-xs text-red-600">{errs.datasets}</p>}</div>
+            {errs.datasets && <p className="mt-1 text-xs text-red-600">{errs.datasets}</p>}
+            <label htmlFor="pp-ds-links" className="label mt-2">Dataset links <span className="font-normal text-slate-500">(optional, one per line)</span></label>
+            <textarea id="pp-ds-links" className="input min-h-[60px]" placeholder="https://www.kaggle.com/datasets/…" value={datasetLinks} onChange={(e) => setDatasetLinks(e.target.value)} />
+            {errs.dataset_links && <p className="mt-1 text-xs text-red-600">{errs.dataset_links}</p>}</div>
           <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <label htmlFor="pp-sheet" className="label !mb-0">Data collection sheet (Excel){datasets.length > 0 ? ' *' : ''}</label>
+              <label htmlFor="pp-sheet" className="label !mb-0">Data collection sheet (Excel){hasDatasets ? ' *' : ''}</label>
               <button type="button" className="btn-secondary" onClick={() => proposalService.dataTemplate().catch((e) => setError(errorMessage(e, 'Download failed')))}><Download className="h-4 w-4" />Download Excel template</button>
             </div>
             <input id="pp-sheet" ref={sheetRef} type="file" accept=".xlsx" className="mt-2 text-sm" onChange={(e) => setSheet(e.target.files?.[0] || null)} />
-            <p className="mt-1 text-xs text-slate-500">Describe each dataset (source, type, size, columns, collection method, licence, privacy…). Download the template, fill one row per dataset, and upload it here as .xlsx. Required when you upload datasets.</p>
+            <p className="mt-1 text-xs text-slate-500">Describe each dataset (source, type, size, columns, collection method, licence, privacy…). Download the template, fill one row per dataset, and upload it here as .xlsx. Required when you add datasets.</p>
             {errs.data_sheet && <p className="mt-1 text-xs text-red-600">{errs.data_sheet}</p>}
           </div>
           <div className="flex justify-end">
-            <button className="btn-primary" disabled={locked || busy}><Upload className="h-4 w-4" />{busy ? 'Uploading…' : 'Submit for approval'}</button>
+            <button className="btn-primary" disabled={locked || busy}><Upload className="h-4 w-4" />{busy ? 'Submitting…' : 'Submit for approval'}</button>
           </div>
         </fieldset>
       </form>
@@ -153,7 +177,7 @@ export default function MyProposal() {
                 {p.shelf && <div className="mt-1 text-xs font-medium text-green-700">On the Project Shelf as {p.shelf.ps_code}</div>}
                 {p.remarks && <div className="mt-1 text-slate-700"><span className="font-medium">Mentor remarks:</span> {p.remarks}</div>}
               </div>
-              <button className="btn-secondary shrink-0" onClick={() => download(p)} aria-label={`Download ${p.file.name}`}><Download className="h-4 w-4" /></button>
+              <button className="btn-secondary shrink-0" onClick={() => download(p)} aria-label={`${p.file.url ? 'Open' : 'Download'} ${p.file.name}`}>{p.file.url ? <ExternalLink className="h-4 w-4" /> : <Download className="h-4 w-4" />}</button>
             </li>
           ))}
         </ul>

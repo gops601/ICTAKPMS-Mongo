@@ -9,12 +9,14 @@ from openpyxl.styles import Font
 
 from app.extensions import db
 
-from app.models import Batch, Domain, Mentor, OrganisationalUnit, ProjectGithubRepository, ProjectReview, ReviewStudentRemark, Student
+from app.models import (Batch, Domain, Mentor, OrganisationalUnit, ProjectGithubRepository, ProjectReview, ReviewStudentRemark,
+                        SrsSubmission, Student)
+from app.models.project import PROJECT_TYPES
 from app.permissions.scope import scoped_batches
 from app.services import evaluation_service as ev
-from app.services import lifecycle
+from app.services import lifecycle, srs_service
 from app.services.dashboard_service import load_projects, mentors_by_project, srs_status_of, SRS_LABELS
-from app.services.metrics_service import project_metrics, review_score_map
+from app.services.metrics_service import project_metrics, project_weeks, review_score_map
 from app.utils.errors import AppError, Forbidden
 
 MAX_EXPORT_ROWS = 50000
@@ -120,6 +122,43 @@ def report_batch(user, f):
     return _cols(("code", "Batch code"), ("name", "Batch"), ("ou", "OU"), ("domain", "Domain"), ("status", "Status"), ("students", "Students"), *AGG_COLS), rows
 
 
+INDIVIDUAL_COLS = [*((f"w{w}_individual_pct", f"Week {w} individual %") for w in range(1, 5)), ("individual_marks", "Individual marks"),
+                   ("individual_max", "Individual out of"), ("individual_score_pct", "Individual score %")]
+
+
+def _individual_scores(projects):
+    """{(project_id, student_id): row values for INDIVIDUAL_COLS}, from submitted evaluations only.
+
+    A week counts the marks the mentor gave that student. A solo student without separate individual marks is scored on
+    the evaluation criteria; a team member without them has no score for that week.
+    """
+    by_id = {p.id: p for p in projects}
+    if not by_id:
+        return {}
+    reviews = db.session.query(ProjectReview).filter(ProjectReview.project_id.in_(list(by_id)), ProjectReview.status == "submitted").all()
+    marks = {(x.review_id, x.student_id): x.marks_obtained for x in db.session.query(ReviewStudentRemark).filter(
+        ReviewStudentRemark.review_id.in_([x.id for x in reviews] or [-1]))}
+    totals = review_score_map(list(by_id))
+    scored = defaultdict(dict)   # (project, student) -> {week: (obtained, max)}
+    for review in reviews:
+        members = by_id[review.project_id].members
+        for member in members:
+            own = marks.get((review.id, member.student_id))
+            if own is not None:
+                score = (own, review.individual_max_marks)
+            elif len(members) == 1 and review.id in totals:
+                score = totals[review.id]
+            else:
+                continue
+            scored[(review.project_id, member.student_id)][review.week_no] = (float(score[0]), float(score[1]))
+    out = {}
+    for key, weeks in scored.items():
+        got, mx = sum(g for g, _ in weeks.values()), sum(m for _, m in weeks.values())
+        out[key] = {**{f"w{w}_individual_pct": _pct(*score) for w, score in weeks.items()},
+                    "individual_marks": round(got, 2), "individual_max": round(mx, 2), "individual_score_pct": _pct(got, mx)}
+    return out
+
+
 def report_student(user, f):
     projects, metrics, mentors = _ctx(user, f)
     by_student = {m.student_id: p for p in projects for m in p.members}
@@ -132,6 +171,8 @@ def report_student(user, f):
     if f.get("batch_id"):
         q = q.where(Student.batch_id == f["batch_id"])
     q = q.order_by_related(Student.batch_id, Batch.code).order_by(Student.registration_no)
+    individual = _individual_scores(projects)
+    blank = {key: None for key, _ in INDIVIDUAL_COLS}
     rows = []
     for s in db.session.prefetch(q.all(), "user", "batch"):
         p = by_student.get(s.id)
@@ -146,10 +187,12 @@ def report_student(user, f):
             "github": "Yes" if m and m["has_github"] else "No" if p else "—",
             "tasks_done_pct": _pct(m["tasks"]["completed"], m["tasks"]["total"]) if m else None,
             "reviews_submitted": f"{m['reviews_submitted']}/4" if m else "—", "score_pct": m["score_pct"] if m else None,
+            **blank, **(individual.get((p.id, s.id), {}) if p else {}),
             "delayed": ("Yes" if m["is_delayed"] else "No") if m else "—"})
     return _cols(("name", "Student"), ("registration_no", "Reg. no"), ("email", "Email"), ("batch", "Batch"), ("project", "Project"),
                  ("stage", "Stage"), ("mentor", "Mentor"), ("progress", "Progress %"), ("srs", "SRS"), ("github", "GitHub"),
-                 ("tasks_done_pct", "Tasks done %"), ("reviews_submitted", "Reviews"), ("score_pct", "Overall score %"), ("delayed", "Delayed")), rows
+                 ("tasks_done_pct", "Tasks done %"), ("reviews_submitted", "Reviews"), ("score_pct", "Overall score %"), *INDIVIDUAL_COLS,
+                 ("delayed", "Delayed")), rows
 
 
 def report_mentor(user, f):
@@ -230,11 +273,69 @@ def report_completion(user, f):
                  ("delayed", "Delayed")), rows
 
 
+WEEK_ONE_LABELS = {"submitted": "On time", "late": "Late", "pending": "Pending", "overdue": "Overdue"}
+
+
+def report_project(user, f):
+    """One row per project: team, week 1 submissions (SRS and GitHub), progress, weekly scores and delays."""
+    return _project_table(*_ctx(user, f))
+
+
+def _project_table(projects, metrics, mentors):
+    ids = [p.id for p in projects] or [-1]
+    first_srs = {}
+    for s in db.session.query(SrsSubmission).filter(SrsSubmission.project_id.in_(ids)).order_by(SrsSubmission.version):
+        first_srs.setdefault(s.project_id, s.submitted_at)
+    repos = {g.project_id: g for g in db.session.query(ProjectGithubRepository).filter(ProjectGithubRepository.project_id.in_(ids))}
+    scores = review_score_map([p.id for p in projects])
+    weekly = {}
+    for rid, pid, week in db.session.query(ProjectReview.id, ProjectReview.project_id, ProjectReview.week_no).filter(
+            ProjectReview.project_id.in_(ids)):
+        if rid in scores:
+            weekly[(pid, week)] = _pct(*scores[rid])
+    rows = []
+    for p in sorted(projects, key=lambda p: (p.batch.code, p.code or "", p.id)):
+        m, repo = metrics[p.id], repos.get(p.id)
+        week_one = srs_service.first_week_status(p, first_srs.get(p.id), repo)
+        rows.append({
+            "code": p.code or "—", "project": p.title,
+            "problem_statement": f"{p.problem_statement.ps_code} – {p.problem_statement.title}",
+            "project_type": PROJECT_TYPES.get(p.project_type, "—"), "batch": p.batch.code, "ou": p.batch.ou.name,
+            "domain": p.batch.domain.name if p.batch.domain else "—",
+            "students": ", ".join(x.student.user.name for x in p.members),
+            "registration_nos": ", ".join(x.student.registration_no for x in p.members), "team_size": len(p.members),
+            "mentor": ", ".join(x.user.name for x in mentors[p.id]) or "—", "stage": lifecycle.LABELS[p.stage],
+            "start_date": p.start_date.isoformat() if p.start_date else None, "week1_due": week_one["due_date"],
+            "srs": SRS_LABELS[srs_status_of(p.stage)],
+            "srs_submitted_on": first_srs[p.id].date().isoformat() if first_srs.get(p.id) else None,
+            "srs_week1": WEEK_ONE_LABELS[week_one["srs"]["state"]],
+            "github": repo.url if repo else "—",
+            "github_added_on": repo.created_at.date().isoformat() if repo else None,
+            "github_week1": WEEK_ONE_LABELS[week_one["github"]["state"]],
+            "progress": m["progress"], "tasks": f"{m['tasks']['completed']}/{m['tasks']['total']}",
+            "reviews": f"{m['reviews_submitted']}/{project_weeks(p)}",
+            **{f"w{w}_pct": weekly.get((p.id, w)) for w in range(1, 5)},
+            "score_pct": m["score_pct"], "target_end_date": p.target_end_date.isoformat() if p.target_end_date else None,
+            "completed_on": p.completed_at.date().isoformat() if p.completed_at else None,
+            "final_signed_off": "Yes" if p.final_signed_off_by else "No",
+            "delayed": "Yes" if m["is_delayed"] else "No", "delay_reasons": "; ".join(m["delay_reasons"])})
+    return _cols(("code", "Project code"), ("project", "Project"), ("problem_statement", "Problem statement"), ("project_type", "Type"),
+                 ("batch", "Batch"), ("ou", "OU"), ("domain", "Domain"), ("students", "Student(s)"), ("registration_nos", "Reg. no(s)"),
+                 ("team_size", "Team size"), ("mentor", "Mentor"), ("stage", "Stage"), ("start_date", "Started"),
+                 ("week1_due", "Week 1 due"), ("srs", "SRS status"), ("srs_submitted_on", "SRS first submitted"),
+                 ("srs_week1", "SRS week 1"), ("github", "GitHub repository"), ("github_added_on", "GitHub added"),
+                 ("github_week1", "GitHub week 1"), ("progress", "Progress %"), ("tasks", "Tasks done"), ("reviews", "Reviews"),
+                 ("w1_pct", "Week 1 %"), ("w2_pct", "Week 2 %"), ("w3_pct", "Week 3 %"), ("w4_pct", "Week 4 %"),
+                 ("score_pct", "Overall score %"), ("target_end_date", "Target end"), ("completed_on", "Completed on"),
+                 ("final_signed_off", "Final sign-off"), ("delayed", "Delayed"), ("delay_reasons", "Delay reasons")), rows
+
+
 # type -> (title, builder, roles allowed, filters it honours)
 REPORTS = {
     "ou": ("OU-wise report", report_ou, {"admin"}, ["ou_id"]),
     "domain": ("Domain-wise report", report_domain, {"admin", "domain_lead"}, ["domain_id"]),
     "batch": ("Batch-wise report", report_batch, {"admin", "domain_lead", "mentor"}, ["ou_id", "domain_id", "batch_id"]),
+    "project": ("Project-wise report", report_project, {"admin", "domain_lead"}, ["ou_id", "domain_id", "batch_id", "mentor_id", "stage"]),
     "student": ("Student-wise report", report_student, {"admin", "domain_lead", "mentor"}, ["ou_id", "domain_id", "batch_id", "stage", "mentor_id"]),
     "mentor": ("Mentor-wise report", report_mentor, {"admin", "domain_lead"}, ["ou_id", "domain_id", "batch_id"]),
     "weekly-evaluations": ("Weekly evaluation report", report_weekly, {"admin", "domain_lead", "mentor"}, ["ou_id", "domain_id", "batch_id", "mentor_id", "week", "status"]),
@@ -287,11 +388,11 @@ def to_xlsx(report):
 
 
 # ------------------------------------------------------ detailed, per-batch report (admin / domain lead)
-DETAILED_SHEETS = ("students", "weekly", "criteria")
+DETAILED_SHEETS = ("projects", "students", "weekly", "criteria")
 
 
 def batch_detailed(user, batch):
-    """Everything about one batch: summary, every student's project status, every weekly score with remarks,
+    """Everything about one batch: summary, a project-wise sheet, every student's project status, every weekly score with remarks,
     and the per-criterion marks. Unpublished (draft) scores are never exported; only submitted evaluations carry marks.
     """
     projects = load_projects(user, {"batch_id": batch.id})
@@ -304,8 +405,9 @@ def batch_detailed(user, batch):
         q = db.session.query(ProjectReview).filter(ProjectReview.project_id.in_(ids)).order_by(ProjectReview.week_no)
         for r in db.session.prefetch(q.all(), "criteria.score"):
             reviews[r.project_id][r.week_no] = r
-    personal = {(r.review_id, r.student_id): r.remarks for r in db.session.query(ReviewStudentRemark).filter(
+    personal = {(r.review_id, r.student_id): r for r in db.session.query(ReviewStudentRemark).filter(
         ReviewStudentRemark.review_id.in_([r.id for rs in reviews.values() for r in rs.values()] or [-1]))}
+    individual = _individual_scores(projects)
     github = {g.project_id: g.url for g in db.session.query(ProjectGithubRepository).filter(ProjectGithubRepository.project_id.in_(ids or [-1]))}
     from app.models import User
     mentor_names = {}
@@ -332,7 +434,8 @@ def batch_detailed(user, batch):
                "progress": m["progress"], "srs": SRS_LABELS[srs_status_of(p.stage)], "github": github.get(p.id) or "—",
                "tasks": f"{m['tasks']['completed']}/{m['tasks']['total']}", "overall_score_pct": m["score_pct"],
                "final_signed_off": "Yes" if p.final_signed_off_by else "No", "final_remarks": p.final_remarks if p.final_signed_off_by else "",
-               "delayed": "Yes" if m["is_delayed"] else "No", "delay_reasons": "; ".join(m["delay_reasons"])}
+               "delayed": "Yes" if m["is_delayed"] else "No", "delay_reasons": "; ".join(m["delay_reasons"]),
+               **individual.get((p.id, s.id), {})}
         for week in range(1, 5):
             r = reviews[p.id].get(week)
             published = bool(r and r.status == "submitted")
@@ -340,6 +443,8 @@ def batch_detailed(user, batch):
             mx = sum(float(c.max_marks) for c in r.criteria) if published else None
             pct = _pct(got, mx) if published and mx else None
             row[f"w{week}_pct"] = pct
+            own = personal.get((r.id, s.id)) if published else None
+            own_marks = float(own.marks_obtained) if own and own.marks_obtained is not None else None
             weekly_rows.append({
                 **{k: base[k] for k in ("student", "registration_no")}, "project": p.title, "week": f"Week {week}",
                 "status": ev.STATUS_LABEL[r.status] if r else "—", "due_date": r.due_date.isoformat() if r and r.due_date else None,
@@ -347,7 +452,8 @@ def batch_detailed(user, batch):
                 "mentor": mentor_name(r.mentor_id) if published else None, "marks": got, "max_marks": mx, "percentage": pct,
                 "overall_feedback": r.remarks if published else None, "strengths": r.strengths if published else None,
                 "improvements": r.improvements if published else None, "recommendations": r.recommendations if published else None,
-                "student_remarks": personal.get((r.id, s.id)) if published else None})
+                "student_remarks": own.remarks if own else None, "individual_marks": own_marks,
+                "individual_max": float(r.individual_max_marks) if own_marks is not None else None})
             if published:
                 for c in r.criteria:
                     criteria_rows.append({"student": s.user.name, "registration_no": s.registration_no, "project": p.title, "week": f"Week {week}",
@@ -368,17 +474,19 @@ def batch_detailed(user, batch):
         ("Generated on", datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")), ("Generated by", user.name),
     ]
     sheets = {
+        "projects": _project_table(projects, metrics, mentors),
         "students": (_cols(("student", "Student"), ("registration_no", "Reg. no"), ("email", "Email"), ("phone", "Phone"), ("project", "Project"),
                            ("problem_statement", "Problem statement"), ("team", "Team"), ("mentor", "Mentor"), ("stage", "Stage"),
                            ("progress", "Progress %"), ("srs", "SRS"), ("github", "GitHub"), ("tasks", "Tasks done"),
                            ("w1_pct", "Week 1 %"), ("w2_pct", "Week 2 %"), ("w3_pct", "Week 3 %"), ("w4_pct", "Week 4 %"),
-                           ("overall_score_pct", "Overall score %"), ("final_signed_off", "Final sign-off"), ("final_remarks", "Final remarks"),
+                           ("overall_score_pct", "Overall score %"), *INDIVIDUAL_COLS, ("final_signed_off", "Final sign-off"), ("final_remarks", "Final remarks"),
                            ("delayed", "Delayed"), ("delay_reasons", "Delay reasons")), student_rows),
         "weekly": (_cols(("student", "Student"), ("registration_no", "Reg. no"), ("project", "Project"), ("week", "Week"), ("status", "Status"),
                          ("due_date", "Due"), ("submitted_on", "Submitted"), ("mentor", "Scored by"), ("marks", "Marks"), ("max_marks", "Out of"),
                          ("percentage", "%"), ("overall_feedback", "Overall feedback"), ("strengths", "Strengths"),
                          ("improvements", "Areas for improvement"), ("recommendations", "Recommendations"),
-                         ("student_remarks", "Remarks for this student")), weekly_rows),
+                         ("student_remarks", "Remarks for this student"), ("individual_marks", "Individual marks"),
+                         ("individual_max", "Individual out of")), weekly_rows),
         "criteria": (_cols(("student", "Student"), ("registration_no", "Reg. no"), ("project", "Project"), ("week", "Week"), ("criterion", "Criterion"),
                            ("max_marks", "Max marks"), ("marks_obtained", "Marks obtained"), ("criterion_remarks", "Remarks")), criteria_rows),
     }
@@ -397,7 +505,7 @@ def detailed_to_xlsx(report):
         ws.cell(row=ws.max_row, column=1).font = Font(bold=True)
     ws.column_dimensions["A"].width = 26
     ws.column_dimensions["B"].width = 60
-    titles = {"students": "Students", "weekly": "Weekly scores", "criteria": "Criteria scores"}
+    titles = {"projects": "Projects", "students": "Students", "weekly": "Weekly scores", "criteria": "Criteria scores"}
     for key in DETAILED_SHEETS:
         columns, rows = report["sheets"][key]
         sh = wb.create_sheet(titles[key])

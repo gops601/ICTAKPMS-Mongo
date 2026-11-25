@@ -187,7 +187,7 @@ def batch_to_dict(b, student_count=None, details=True):
            "ou": {"id": b.ou.id, "name": b.ou.name, "code": b.ou.code}, "domain": {"id": b.domain.id, "name": b.domain.name} if b.domain else None,
            "subdomain": {"id": b.subdomain.id, "name": b.subdomain.name} if b.subdomain else None,
            "start_date": _iso(b.start_date), "end_date": _iso(b.end_date),
-           "project_start_date": _iso(b.project_start_date), "project_end_date": _iso(b.project_end_date)}
+           "project_start_date": _iso(b.effective_project_start), "project_end_date": _iso(b.effective_project_end)}
     if student_count is not None:
         out["student_count"] = student_count
     if details:

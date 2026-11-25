@@ -81,7 +81,7 @@ export default function ReportsPage({ title = 'Reports' }) {
             <FileSpreadsheet className="mt-0.5 h-6 w-6 text-accent" aria-hidden />
             <div>
               <h2 className="font-semibold text-slate-900">Batch detailed report</h2>
-              <p className="text-sm text-slate-500">One Excel workbook per batch: summary, every student&apos;s project status, each weekly score with the mentor&apos;s remarks (including each student&apos;s own remark) and the per-criterion marks.</p>
+              <p className="text-sm text-slate-500">One Excel workbook per batch: summary, a project-wise sheet, every student&apos;s project status, each weekly score with the mentor&apos;s remarks (including each student&apos;s own remark) and the per-criterion marks.</p>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -91,7 +91,7 @@ export default function ReportsPage({ title = 'Reports' }) {
             <button className="btn-primary" disabled={!detailBatch || Boolean(exporting)} onClick={() => downloadDetailed('xlsx')}>
               <Download className="h-4 w-4" />{exporting.startsWith('detail-xlsx') ? 'Preparing…' : 'Download Excel (all sheets)'}
             </button>
-            {[['students', 'Students'], ['weekly', 'Weekly scores'], ['criteria', 'Criteria']].map(([sheet, label]) => (
+            {[['projects', 'Projects'], ['students', 'Students'], ['weekly', 'Weekly scores'], ['criteria', 'Criteria']].map(([sheet, label]) => (
               <button key={sheet} className="btn-secondary" disabled={!detailBatch || Boolean(exporting)} onClick={() => downloadDetailed('csv', sheet)}>CSV · {label}</button>
             ))}
           </div>

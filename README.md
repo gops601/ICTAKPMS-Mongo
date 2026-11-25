@@ -8,20 +8,52 @@ Scrum tracking, weekly reviews and final evaluation, across multiple OUs, domain
 See [ARCHITECTURE.md](ARCHITECTURE.md) for design decisions and [DEVELOPMENT_STATUS.md](DEVELOPMENT_STATUS.md)
 for progress. Current status: **Phase 8 (Dashboards & reports) complete.**
 
-## Quick start (Docker)
+## What runs where
 
-Create a MongoDB Atlas cluster, a database user, and allow this machine's IP under *Network Access*.
+| Part | Runs in |
+|---|---|
+| Frontend (React, served by nginx) | Docker |
+| Backend (Flask, gunicorn) | Docker |
+| MongoDB | **MongoDB Atlas** (hosted). It is not dockerised |
+| Uploaded files | Docker volume `uploads_data` |
 
-```bash
-cp .env.example .env          # then edit: MONGODB_URI, SECRET_KEY, JWT_SECRET_KEY, ADMIN_*
-docker compose up --build
-```
+## Quick start
 
-Open http://localhost:8080 (or `APP_PORT`). API docs (Swagger UI): http://localhost:8080/api/docs
+1. **Atlas:** create a cluster and a database user, and add this machine's IP under *Network Access*. Copy the
+   connection string from *Connect → Drivers*.
+2. **Configure:** create `.env` in the project folder (skip if you already have one).
+
+   ```bash
+   cp .env.example .env          # PowerShell: Copy-Item .env.example .env
+   ```
+
+   Set `MONGODB_URI` (percent-encode special characters in the password), `MONGODB_DB`, `SECRET_KEY`,
+   `JWT_SECRET_KEY` and `ADMIN_*`.
+3. **Start** (Docker Desktop must be running):
+
+   ```bash
+   docker compose up -d --build
+   docker compose ps                     # backend and frontend should be "Up"
+   docker compose logs -f backend        # ready at "Listening at: http://0.0.0.0:5000"
+   ```
+
+4. Open http://localhost:8080 (or the `APP_PORT` in `.env`). API docs (Swagger UI): `/api/docs` on the same address.
+
+Upgrading an installation that ran the MySQL release? First read *Moving data from the old MySQL release* below, and
+add `--remove-orphans` to the first `up` so the old database container is removed (its data volume is kept).
+
+| To do this | Command |
+|---|---|
+| Start | `docker compose up -d` |
+| Stop | `docker compose down` |
+| Apply code changes | `docker compose up -d --build` |
+| Recent errors | `docker compose logs backend --tail 50` |
+
+Never add `-v` to `docker compose down`: it deletes the uploaded files.
 
 On start the backend container automatically runs `flask init-db` (collections and indexes), `flask seed` (roles, the four OUs with
 their batch fields, the six domains) and, when `ADMIN_EMAIL` and `ADMIN_PASSWORD` are set, `flask create-admin`.
-All of these are idempotent. Data lives in Atlas; uploads (`uploads_data`) persist across restarts.
+All of these are idempotent. Data lives in Atlas; uploads persist across restarts.
 
 Manual equivalents:
 
@@ -30,36 +62,57 @@ docker compose exec backend flask init-db
 docker compose exec backend flask create-admin --email you@example.com --password 'S3cure-pass1'
 ```
 
-## Local development (without Docker for app code)
+## Local development (without Docker)
 
-```bash
+The backend reads `.env` from the project folder. To keep development work apart from real data, set another database
+name for the terminal (it takes precedence over `.env`).
+
+```powershell
+# terminal 1 - backend, http://localhost:5000
 cd backend
-python -m venv .venv && .venv/Scripts/activate      # Linux/macOS: source .venv/bin/activate
+python -m venv .venv
+.venv\Scripts\activate                       # Linux/macOS: source .venv/bin/activate
 pip install -r requirements.txt
-export MONGODB_URI="mongodb+srv://<user>:<password>@<cluster>.mongodb.net/?retryWrites=true&w=majority"
-export MONGODB_DB=plms_dev
-export FLASK_APP=run.py
-flask init-db && flask seed && flask create-admin --email admin@example.com --password 'Admin12345'
-python run.py                                 # http://localhost:5000
+$env:MONGODB_DB = "plms_dev"                  # Linux/macOS: export MONGODB_DB=plms_dev
+$env:FLASK_APP = "run.py"                     # Linux/macOS: export FLASK_APP=run.py
+flask init-db
+flask create-admin                            # uses ADMIN_* from .env; also seeds roles, OUs and domains
+python run.py
 
-cd ../frontend
+# terminal 2 - frontend, http://localhost:5173 (proxies /api to :5000)
+cd frontend
 npm install
-npm run dev                                   # http://localhost:5173 (proxies /api to :5000)
+npm run dev
 ```
+
+Uploaded files are stored in `backend/uploads` here, not in the Docker volume. To see files uploaded through Docker,
+copy them while its containers exist: `docker compose cp backend:/app/uploads/. backend/uploads`.
 
 ## Tests
 
-The backend tests need a MongoDB replica set that they may empty. A throwaway local one:
+**Every backend test deletes all data in its test database.** Never point the tests at a database you care about.
 
-```bash
-docker run -d --name plms-mongo-test -p 127.0.0.1:27027:27017 mongo:7 --replSet rs0 --bind_ip_all
-docker exec plms-mongo-test mongosh --quiet --eval "rs.initiate({_id:'rs0',members:[{_id:0,host:'localhost:27017'}]})"
+The tests need a MongoDB replica set (for transactions). By default they use `localhost:27027`, so install
+[MongoDB Community Server](https://www.mongodb.com/try/download/community) and `mongosh`, then run a throwaway
+instance:
 
-cd backend  && python -m pytest -q      # TEST_MONGODB_URI / TEST_MONGODB_DB override the defaults
-cd frontend && npm test
+```powershell
+# terminal 1 - leave running
+mkdir C:\mongo-test
+mongod --replSet rs0 --port 27027 --dbpath C:\mongo-test
+
+# terminal 2 - the first time only
+mongosh --port 27027 --eval "rs.initiate()"
+
+cd backend
+python -m pytest -q
+cd ..\frontend
+npm test
 ```
 
-Never point `TEST_MONGODB_DB` at a database with real data: every test deletes everything in it.
+An Atlas database can be used instead, with `TEST_MONGODB_URI` set to the connection string and `TEST_MONGODB_DB` to a
+name used for nothing else (default `plms_test`). Expect it to be very much slower: every database call crosses the
+network.
 
 ## Data model
 
@@ -80,8 +133,9 @@ former tables were. `backend/app/odm` provides the models, queries and unit of w
 
 ## Moving data from the old MySQL release
 
-Run once, with the app stopped and the MySQL schema fully upgraded. `.env` needs `MONGODB_URI` and still the old
-`MYSQL_*` values.
+Needed once, on a machine that has the old Docker volume `mysql_data`. The MySQL schema must be that of the last MySQL
+release, and `.env` needs `MONGODB_URI` as well as the old `MYSQL_*` values. MySQL runs only for the duration of the
+copy ([docker-compose.migrate.yml](docker-compose.migrate.yml)).
 
 ```bash
 docker compose stop backend frontend
@@ -90,9 +144,17 @@ docker compose -f docker-compose.yml -f docker-compose.migrate.yml stop db
 docker compose up -d --build --remove-orphans
 ```
 
-It copies every table with the same ids, checks the counts and leaves MySQL untouched. It refuses to write into a
-database that already has data; append `--replace` with `scripts/migrate_mysql_to_mongo.py` when running it by hand
-(see the script's help).
+It copies every table with the same ids, checks the counts and only reads MySQL. It refuses to write into a database
+that already has data.
+
+To copy again, **replacing everything in `MONGODB_DB`** (including anything entered in the new version), use this in
+place of the second command:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.migrate.yml run --rm --build --entrypoint sh migrate -c "pip install --quiet --user -r requirements-migrate.txt && python scripts/migrate_mysql_to_mongo.py --replace"
+```
+
+Once you no longer need the old data, the `MYSQL_*` lines in `.env` and `docker-compose.migrate.yml` can be removed.
 
 ## Security notes
 
@@ -108,7 +170,7 @@ database that already has data; append `--replace` with `scripts/migrate_mysql_t
 ```
 backend/   Flask app (app/models, odm, routes, services, schemas, permissions, utils), scripts, tests
 frontend/  React + Vite + Tailwind SPA (served by nginx in Docker)
-uploads/   File storage root (Docker volume in containers)
+uploads/   Placeholder for file storage (Docker uses the volume uploads_data)
 ```
 
 ## Bulk import workflow (admin)
@@ -192,7 +254,7 @@ requests. To show your own photography or AI-generated artwork on the sign-in pa
 * A **Domain Lead can revert a submitted score to the mentor** with a reason (*Revert to mentor*): the mentor is notified, sees the reason,
   updates the score and resubmits. The previous version stays in the evaluation history.
 * **Batch detailed report** (admin and Domain Lead): *Reports → Batch detailed report*, or *Detailed report* on a batch. One Excel workbook with
-  Summary, Students, Weekly scores (with remarks) and Criteria scores sheets (or any sheet as CSV).
+  Summary, Projects, Students, Weekly scores (with remarks) and Criteria scores sheets (or any sheet as CSV).
 
 ## Review dates
 

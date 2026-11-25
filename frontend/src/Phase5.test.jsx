@@ -192,15 +192,15 @@ describe('SRS panel – mentor review', () => {
 
 describe('GitHub panel', () => {
   it('is locked until the SRS is approved', async () => {
-    svc.githubService.get.mockResolvedValue({ repository: null, can_edit: true, implementation_unlocked: false })
+    svc.githubService.get.mockResolvedValue({ repository: null, can_edit: true, unlocked: false })
     render(<GithubPanel projectId={7} />)
-    expect(await screen.findByText(/once your srs is approved/i)).toBeInTheDocument()
+    expect(await screen.findByText(/once your project is approved/i)).toBeInTheDocument()
     expect(screen.queryByLabelText(/repository url/i)).not.toBeInTheDocument()
   })
 
   it('validates the URL on the client and saves a valid one', async () => {
-    svc.githubService.get.mockResolvedValue({ repository: null, can_edit: true, implementation_unlocked: true })
-    svc.githubService.set.mockResolvedValue({ repository: { url: 'https://github.com/o/r', description: 'API' }, can_edit: true, implementation_unlocked: true })
+    svc.githubService.get.mockResolvedValue({ repository: null, can_edit: true, unlocked: true, implementation_unlocked: true })
+    svc.githubService.set.mockResolvedValue({ repository: { url: 'https://github.com/o/r', description: 'API' }, can_edit: true, unlocked: true, implementation_unlocked: true })
     render(<GithubPanel projectId={7} />)
     const input = await screen.findByLabelText(/repository url/i)
     for (const bad of ['https://gitlab.com/o/r', 'github.com/o/r', 'https://github.com/o', 'https://github.com/o/r/tree/main']) {
@@ -221,7 +221,7 @@ describe('GitHub panel', () => {
   })
 
   it('shows server-side URL errors', async () => {
-    svc.githubService.get.mockResolvedValue({ repository: null, can_edit: true, implementation_unlocked: true })
+    svc.githubService.get.mockResolvedValue({ repository: null, can_edit: true, unlocked: true, implementation_unlocked: true })
     svc.githubService.set.mockRejectedValue({ response: { status: 422, data: { message: 'Enter a valid GitHub repository URL', errors: { url: 'Not a valid GitHub repository URL' } } } })
     render(<GithubPanel projectId={7} />)
     await userEvent.type(await screen.findByLabelText(/repository url/i), 'https://github.com/o/r')

@@ -85,7 +85,8 @@ class Batch(TimestampMixin, db.Model):
     status = db.Column(db.String(20), default="active", nullable=False)  # active | closed
     # online = 4-week projects, offline = 3-week projects (week 1: SRS + datasets, then implementation)
     mode = db.Column(db.String(10), default="online", server_default="online", nullable=False)
-    # Set by the domain lead: the window projects in this batch run in (allocation defaults to it)
+    # The window projects in this batch run in (allocation defaults to it). Entered when the batch is created and
+    # editable by the admin or domain lead; start_date / end_date are kept in step with it.
     project_start_date = db.Column(db.Date)
     project_end_date = db.Column(db.Date)
     # Set when the batch was enrolled from an external portal (see ExternalPortal)
@@ -98,6 +99,15 @@ class Batch(TimestampMixin, db.Model):
     ou_details = db.relationship("BatchOUDetail", back_populates="batch", cascade="all, delete-orphan")
     students = db.relationship("Student", back_populates="batch")
     batch_mentors = db.relationship("BatchMentor", back_populates="batch", cascade="all, delete-orphan")
+
+    # Batches saved before the two pairs of dates were linked only have start_date / end_date.
+    @property
+    def effective_project_start(self):
+        return self.project_start_date or self.start_date
+
+    @property
+    def effective_project_end(self):
+        return self.project_end_date or self.end_date
 
 
 class BatchOUDetail(db.Model):

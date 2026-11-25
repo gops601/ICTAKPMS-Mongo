@@ -7,7 +7,7 @@ from app.models import (Batch, BatchMentor, Domain, Mentor, OrganisationalUnit, 
                         ProjectStudent, Student, SrsSubmission)
 from app.permissions.scope import lead_domain_ids, mentor_batch_ids, mentor_profile, scoped_batches, scoped_projects, student_profile
 from app.services import evaluation_service as ev
-from app.services import lifecycle
+from app.services import lifecycle, srs_service
 from app.services.metrics_service import project_metrics, review_score_map
 
 IN_PROGRESS = ("srs_preparation", "srs_submitted", "srs_under_review", "srs_changes_requested", "srs_approved", "implementation", "final_evaluation")
@@ -362,7 +362,7 @@ def student_dashboard(user, filters=None):
         "batch": {"code": p.batch.code, "name": p.batch.name}, "mentors": [x.user.name for x in mentors],
         "srs_status": srs_status_of(p.stage), "srs_status_label": SRS_LABELS[srs_status_of(p.stage)], "latest_srs_feedback": srs_remark,
         "reviews": week_rows, "latest_mentor_feedback": latest, "scrum": m["tasks"], "github_url": repo,
-        "timeline": transitions,
+        "timeline": transitions, "first_week": srs_service.project_first_week(p),
     }
 
 

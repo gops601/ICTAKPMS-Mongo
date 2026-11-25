@@ -80,7 +80,7 @@ def run(call, admin_email, admin_password, tag="x"):
     assert gh["repository"]["url"] == "https://github.com/flow/app"
 
     # 13. Student creates Scrum tasks   14. Student updates task progress
-    tasks = [ok(13, call("POST", f"/api/scrum/projects/{pid}/tasks", stu_t, {"title": f"Task {i}", "priority": "high"})) for i in range(3)]
+    tasks = [ok(13, call("POST", f"/api/scrum/projects/{pid}/tasks", stu_t, {"title": f"Task {i}", "priority": "high", "estimated_hours": 4})) for i in range(3)]
     for t in tasks:
         for status in ("todo", "in_progress", "in_review", "completed"):
             ok(14, call("PATCH", f"/api/scrum/tasks/{t['id']}/move", stu_t, {"status": status}))

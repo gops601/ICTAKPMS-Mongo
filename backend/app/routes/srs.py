@@ -35,12 +35,13 @@ def _submission_for(user, submission_id):
 
 # ------------------------------------------------------------------------ SRS
 @bp.post("/srs/projects/<int:project_id>")
-@bp.doc(security=SEC, description="multipart/form-data: file (PDF/DOCX), description (optional)")
+@bp.doc(security=SEC, description="multipart/form-data: file (PDF/DOCX) or url (a link to the document), description (optional)")
 @roles_required("student")
 def submit_srs(project_id):
     user = current_user()
     project = ensure_project_access(user, project_id)
-    sub = srs_service.submit(project, request.files.get("file"), request.form.get("description"), user)
+    sub = srs_service.submit(project, request.files.get("file"), request.form.get("description"), user,
+                             url=request.form.get("url"))
     audit(user.id, "srs.submit", "project", project.id, {"version": sub.version})
     db.session.commit()
     return ok(srs_summary(project, _submissions(project.id)), f"SRS v{sub.version} submitted", 201)
@@ -101,13 +102,19 @@ def _repo_dict(project_id):
     return {"url": repo.url, "description": repo.description, "updated_at": repo.updated_at.isoformat()} if repo else None
 
 
+def _github_payload(project, can_edit):
+    due = srs_service.first_week_due(project)
+    return {"repository": _repo_dict(project.id), "can_edit": can_edit, "unlocked": srs_service.github_unlocked(project),
+            "due_date": due.isoformat() if due else None,
+            "implementation_unlocked": srs_service.implementation_unlocked(project)}
+
+
 @bp.get("/github/projects/<int:project_id>")
 @bp.doc(security=SEC)
 @login_required
 def get_github(project_id):
     project = ensure_project_access(current_user(), project_id)
-    return ok({"repository": _repo_dict(project.id), "can_edit": current_user().role_name == "student",
-               "implementation_unlocked": srs_service.implementation_unlocked(project)})
+    return ok(_github_payload(project, current_user().role_name == "student"))
 
 
 @bp.put("/github/projects/<int:project_id>")
@@ -120,4 +127,4 @@ def set_github(data, project_id):
     srs_service.set_github(project, data["url"], data.get("description"), user)
     audit(user.id, "github.set", "project", project.id)
     db.session.commit()
-    return ok({"repository": _repo_dict(project.id), "can_edit": True, "implementation_unlocked": True}, "Repository saved")
+    return ok(_github_payload(project, True), "Repository saved")

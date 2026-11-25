@@ -19,7 +19,7 @@ export default function TaskModal({ projectId, taskId, members, permissions, onC
   const creating = !taskId
   const [task, setTask] = useState(null)
   const [tab, setTab] = useState('Details')
-  const [form, setForm] = useState({ title: '', description: '', priority: 'medium', status: 'backlog', assigned_student_ids: [], start_date: '', due_date: '' })
+  const [form, setForm] = useState({ title: '', description: '', priority: 'medium', status: 'backlog', assigned_student_ids: [], estimated_hours: '', start_date: '', due_date: '' })
   const [comment, setComment] = useState('')
   const [error, setError] = useState('')
   const [errs, setErrs] = useState({})
@@ -29,7 +29,7 @@ export default function TaskModal({ projectId, taskId, members, permissions, onC
   const fill = (t) => {
     setTask(t)
     setForm({ title: t.title, description: t.description || '', priority: t.priority, status: t.status,
-      assigned_student_ids: (t.assignees || (t.assignee ? [t.assignee] : [])).map((a) => a.student_id), start_date: t.start_date || '', due_date: t.due_date || '' })
+      assigned_student_ids: (t.assignees || (t.assignee ? [t.assignee] : [])).map((a) => a.student_id), estimated_hours: t.estimated_hours ?? '', start_date: t.start_date || '', due_date: t.due_date || '' })
   }
   useEffect(() => {
     if (!taskId) return
@@ -45,6 +45,7 @@ export default function TaskModal({ projectId, taskId, members, permissions, onC
     const body = {
       title: form.title, description: form.description, priority: form.priority,
       assigned_student_ids: form.assigned_student_ids,
+      estimated_hours: form.estimated_hours === '' ? null : Number(form.estimated_hours),
       start_date: form.start_date || null, due_date: form.due_date || null,
     }
     try {
@@ -110,6 +111,9 @@ export default function TaskModal({ projectId, taskId, members, permissions, onC
                   <select id="t-status" className="input" value={form.status} onChange={set('status')}>
                     {COLUMNS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></div>
               )}
+              <div><label htmlFor="t-hours" className="label">Estimated duration (hours) *</label>
+                <input id="t-hours" type="number" className="input" required min="0.25" max="1000" step="0.25" value={form.estimated_hours} onChange={set('estimated_hours')} />{err('estimated_hours')}</div>
+              <div className="hidden sm:block" aria-hidden />
               <div><label htmlFor="t-start" className="label">Start date</label>
                 <input id="t-start" type="date" className="input" value={form.start_date} onChange={set('start_date')} />{err('start_date')}</div>
               <div><label htmlFor="t-due" className="label">Due date</label>

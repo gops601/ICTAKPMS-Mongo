@@ -48,7 +48,7 @@ def world(make_user, login):
 
 
 def add(client, world, who, project, title="Task", **kw):
-    return client.post(f"/api/scrum/projects/{project.id}/tasks", headers=world["H"][who], json={"title": title, **kw})
+    return client.post(f"/api/scrum/projects/{project.id}/tasks", headers=world["H"][who], json={"title": title, "estimated_hours": 4, **kw})
 
 
 def board(client, world, who, project):
@@ -135,8 +135,11 @@ def test_create_task_with_all_fields(client, world):
     ({"title": "ok", "status": "done"}, "status"), ({"title": "ok", "start_date": "garbage"}, "start_date"),
     ({"title": "ok", "start_date": "2026-03-10", "due_date": "2026-03-01"}, "due_date"),
     ({"title": "ok", "description": "x" * 5001}, "description"),
+    ({"title": "ok", "estimated_hours": None}, "estimated_hours"), ({"title": "ok", "estimated_hours": 0}, "estimated_hours"),
+    ({"title": "ok", "estimated_hours": "abc"}, "estimated_hours"), ({"title": "ok", "estimated_hours": 1001}, "estimated_hours"),
 ])
 def test_task_validation(client, world, payload, field):
+    payload = {"estimated_hours": 4, **payload}
     r = client.post(f"/api/scrum/projects/{world['team'].id}/tasks", headers=world["H"]["s1"], json=payload)
     assert r.status_code == 422 and field in r.get_json()["errors"]
     assert db.session.query(ScrumTask).count() == 0
@@ -360,3 +363,43 @@ def test_board_created_lazily_for_legacy_projects(client, world):
     db.session.commit()
     assert board(client, world, "s1", world["team"])["stats"]["total"] == 0
     assert add(client, world, "s1", world["team"]).status_code == 201
+
+
+# ---------------------------------------------------------------- estimates and burn charts
+def test_burn_data_follows_estimates_and_completion(client, world):
+    from datetime import datetime
+    from app.services.scrum_service import burn_data
+    p = world["team"]
+    p.start_date, p.target_end_date = date(2026, 3, 2), date(2026, 3, 6)
+    db.session.commit()
+    a = add(client, world, "s1", p, "A", estimated_hours=6).get_json()["data"]
+    b = add(client, world, "s1", p, "B", estimated_hours="2.5").get_json()["data"]
+    assert (a["estimated_hours"], b["estimated_hours"]) == (6.0, 2.5)
+    rows = {t.title: t for t in db.session.query(ScrumTask).all()}
+    rows["A"].created_at, rows["B"].created_at = datetime(2026, 3, 2, 9), datetime(2026, 3, 3, 9)
+    rows["A"].status, rows["A"].completed_at = "completed", datetime(2026, 3, 4, 9)
+    db.session.add(ScrumTask(board_id=rows["A"].board_id, title="old", status="todo"))   # saved before estimates existed
+    db.session.commit()
+
+    d = burn_data(p, today=date(2026, 3, 4))
+    assert (d["total_hours"], d["completed_hours"], d["remaining_hours"], d["unestimated"]) == (8.5, 6.0, 2.5, 1)
+    assert [x["scope"] for x in d["points"]] == [6.0, 8.5, 8.5, None, None]
+    assert [x["completed"] for x in d["points"]] == [0, 0, 6.0, None, None]
+    assert [x["remaining"] for x in d["points"]] == [6.0, 8.5, 2.5, None, None]
+    assert d["points"][0]["ideal"] == 8.5 and d["points"][-1]["ideal"] == 0
+
+
+def test_burn_endpoint_and_estimate_updates(client, world):
+    p = world["team"]
+    url = f"/api/scrum/projects/{p.id}/burn"
+    assert client.get(url, headers=world["H"]["s1"]).get_json()["data"]["points"] == []
+    t = add(client, world, "s1", p, estimated_hours=5).get_json()["data"]
+
+    def put(body):
+        return client.put(f"/api/scrum/tasks/{t['id']}", headers=world["H"]["s1"], json=body)
+
+    assert put({"title": "renamed"}).get_json()["data"]["estimated_hours"] == 5.0
+    assert put({"estimated_hours": 7}).get_json()["data"]["estimated_hours"] == 7.0
+    assert put({"estimated_hours": None}).status_code == 422
+    assert client.get(url, headers=world["H"]["la"]).get_json()["data"]["total_hours"] == 7.0
+    assert client.get(url, headers=world["H"]["s3"]).status_code == 404

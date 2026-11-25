@@ -178,19 +178,19 @@ def _kind(kind):
 
 
 @bp.post("/<int:ps_id>/<kind>")
-@bp.doc(security=SEC, description="multipart/form-data: file, description (optional). kind = datasets | documents")
+@bp.doc(security=SEC, description="multipart/form-data: file or url (a link), description (optional). kind = datasets | documents")
 @roles_required(*MANAGERS)
 def upload_attachment(ps_id, kind):
     category, model, rel = _kind(kind)
     ps = _editable(ps_id)
-    attachment = file_service.save_upload(request.files.get("file"), category, current_user().id)
+    attachment = file_service.save_source(request.files.get("file"), request.form.get("url"), category, current_user().id)
     link = model(problem_statement_id=ps.id, file_id=attachment.id,
                  description=(request.form.get("description") or "").strip()[:255] or None)
     db.session.add(link)
     audit(current_user().id, f"problem_statement.{category}_upload", "problem_statement", ps.id,
           {"file": attachment.original_name})
     db.session.commit()
-    return ok(file_to_dict(link), "File uploaded", 201)
+    return ok(file_to_dict(link), "Link added" if attachment.external_url else "File uploaded", 201)
 
 
 def _link(ps_id, kind, link_id, editable):

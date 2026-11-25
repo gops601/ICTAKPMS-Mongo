@@ -71,7 +71,7 @@ def report(report_type):
 @bp.get("/reports/batch-detailed/<int:batch_id>")
 @bp.doc(security=SEC, description="Detailed report for ONE batch (admin / domain lead of its domain): summary, every student's project "
                                   "status, weekly scores with remarks, per-criterion marks. format=xlsx (all sheets, default) | csv "
-                                  "(sheet=students|weekly|criteria) | json.")
+                                  "(sheet=projects|students|weekly|criteria) | json.")
 @roles_required("admin", "domain_lead")
 def batch_detailed_report(batch_id):
     user = current_user()
@@ -84,7 +84,7 @@ def batch_detailed_report(batch_id):
                    "sheets": {k: {"columns": c, "rows": rows} for k, (c, rows) in data["sheets"].items()}})
     sheet = request.args.get("sheet", "students")
     if fmt == "csv" and sheet not in reporting.DETAILED_SHEETS:
-        raise AppError("sheet must be students, weekly or criteria", 422)
+        raise AppError("sheet must be projects, students, weekly or criteria", 422)
     if fmt not in ("xlsx", "csv"):
         raise AppError("format must be xlsx, csv or json", 422)
     audit(user.id, "report.export", "batch", batch.id, {"type": "batch-detailed", "format": fmt})

@@ -105,7 +105,7 @@ def test_bulk_metrics_match_single_project_helpers(world):
     assert bulk[world["p3"].id]["progress"] == 20 + 40 + 10               # SRS + 4 reviews + final (no scrum/github)
     assert bulk[world["p1"].id]["score_pct"] == 65.0                      # (80+50)/200
     assert bulk[world["p1"].id]["delay_reasons"] == ["1 Scrum task(s) overdue"]
-    assert "SRS not approved after week 1" in bulk[world["p5"].id]["delay_reasons"]
+    assert {"SRS not submitted in week 1", "GitHub repository not added in week 1"} <= set(bulk[world["p5"].id]["delay_reasons"])
     assert bulk[world["p3"].id]["is_delayed"] is False and bulk[world["p2"].id]["is_delayed"] is False
 
 
@@ -248,7 +248,8 @@ def rows(resp):
 
 def test_report_catalogue_by_role(client, world):
     kinds = lambda who: {r["type"] for r in client.get("/api/reports", headers=world["H"][who]).get_json()["data"]}  # noqa: E731
-    assert kinds("admin") == {"ou", "domain", "batch", "student", "mentor", "weekly-evaluations", "project-completion"}
+    assert kinds("admin") == {"ou", "domain", "batch", "project", "student", "mentor", "weekly-evaluations", "project-completion"}
+    assert "project" in kinds("la")
     assert kinds("la") == kinds("admin") - {"ou"}
     assert kinds("m1") == {"batch", "student", "weekly-evaluations", "project-completion"}
     assert kinds("s1") == set()
@@ -304,6 +305,19 @@ def test_mentor_report(client, world):
     assert m["review_completion_pct"] == 66.7 and m["delayed"] == 1 and m["avg_score_given_pct"] is not None
     assert ms["Max Three"]["reviews_overdue"] == 2                    # due dates: 2 weeks ago, 1 week ago, today (not yet overdue), future
     assert set(r["mentor"] for r in rows(rep(client, world, "la", "mentor"))) == {"Mia One"}
+
+
+def test_project_report(client, world):
+    by = {r["project"]: r for r in rows(rep(client, world, "admin", "project"))}
+    assert set(by) == {"Alpha", "Beta", "Gamma", "Epsilon"}
+    a = by["Alpha"]
+    assert (a["students"], a["mentor"], a["github"], a["github_week1"], a["reviews"]) == \
+        ("Student s1", "Mia One", "https://github.com/o/alpha", "On time", "2/4")
+    assert (a["w1_pct"], a["w2_pct"], a["w3_pct"], a["score_pct"]) == (80.0, 50.0, None, 65.0)
+    assert by["Epsilon"]["srs_week1"] == "Overdue" and by["Epsilon"]["github_week1"] == "Overdue"
+    assert {r["project"] for r in rows(rep(client, world, "la", "project"))} == {"Alpha", "Beta", "Gamma"}
+    assert rep(client, world, "m1", "project").status_code == 403
+    assert rep(client, world, "admin", "project", "?format=xlsx").status_code == 200
 
 
 def test_weekly_evaluation_report(client, world):

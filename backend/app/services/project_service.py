@@ -80,8 +80,8 @@ def allocate(batch, items, actor, mentor_id=None, start_date=None, project_type=
     if not items:
         raise AppError("Select at least one student", 422)
 
-    start = parse_date(start_date) if start_date else (batch.project_start_date or date.today())
-    end = batch.project_end_date  # set by the domain lead; otherwise the default project length applies
+    start = parse_date(start_date) if start_date else (batch.effective_project_start or date.today())
+    end = batch.effective_project_end  # the batch's project end date; otherwise the default project length applies
     if end and end <= start:
         raise AppError("The project start date must be before the batch's project end date", 422,
                        {"start_date": f"Must be before {end.isoformat()}"})
@@ -159,8 +159,10 @@ def _notify_allocation(batch, projects, planned, mentor):
     mentors = {mentor.user_id} if mentor else mentor_user_ids(projects[0])   # new projects share the same mentors
     leads = domain_lead_user_ids(batch.domain_id)
     for p, (_, members) in zip(projects, planned):
+        due = f" (by {p.start_date + timedelta(weeks=1):%d %b %Y})" if p.start_date else ""
         notify({s.user_id for s in members}, "project_allocated", "Project allocated",
-               f"You have been allocated “{p.title}”. Start preparing your SRS.", "/student/project")
+               f"You have been allocated “{p.title}”. Submit your SRS and GitHub repository link within the first week{due}.",
+               "/student/project")
         notify(mentors, "project_allocated", "New project allocated",
                f"“{p.title}” was allocated in batch {batch.code}.", f"/projects/{p.id}")
     notify(leads, "projects_allocated", "Projects allocated",

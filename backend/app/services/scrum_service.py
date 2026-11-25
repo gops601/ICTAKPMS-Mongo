@@ -1,5 +1,6 @@
 """Scrum board rules: who may do what, task CRUD, ordered moves, comments and history."""
-from datetime import date
+from datetime import date, timedelta
+from decimal import Decimal, InvalidOperation
 
 from app.extensions import db
 from app.models import Project, ProjectStudent, ScrumBoard, ScrumTask, ScrumTaskAssignee, ScrumTaskComment, ScrumTaskHistory, Student
@@ -16,6 +17,8 @@ COLUMN_LABELS = {"backlog": "Backlog", "todo": "To Do", "in_progress": "In Progr
                  "in_review": "In Review", "completed": "Completed"}
 PRE_WORK_STATUSES = ("backlog", "todo")          # tasks that may still be deleted
 MAX_TITLE, MAX_TEXT = 255, 5000
+MAX_TASK_HOURS = 1000
+MAX_BURN_DAYS = 731
 
 
 # ------------------------------------------------------------- permissions
@@ -133,6 +136,21 @@ def _set_assignees(task, ids, project, user, log=True):
         notify(users, "task_assigned", "Task assigned to you", f"You were assigned “{task.title}” in “{project.title}”.", f"/scrum/{project.id}")
 
 
+def _hours(raw):
+    """(hours, None) for a valid estimate, else (None, why not)."""
+    if raw is None or str(raw).strip() == "":
+        return None, "Estimated duration (hours) is required"
+    try:
+        hours = Decimal(str(raw).strip())
+        if not hours.is_finite():
+            raise InvalidOperation
+    except InvalidOperation:
+        return None, "Estimated duration must be a number of hours"
+    if not Decimal("0.25") <= hours <= MAX_TASK_HOURS:
+        return None, f"Estimated duration must be between 0.25 and {MAX_TASK_HOURS} hours"
+    return hours.quantize(Decimal("0.01")), None
+
+
 def _clean(data, existing=None):
     """Validate task fields; returns a dict containing only the fields that were supplied."""
     out, errors = {}, {}
@@ -154,6 +172,10 @@ def _clean(data, existing=None):
         if data["priority"] not in TASK_PRIORITIES:
             errors["priority"] = f"Priority must be one of: {', '.join(TASK_PRIORITIES)}"
         out["priority"] = data["priority"]
+    if "estimated_hours" in data or not existing:
+        out["estimated_hours"], problem = _hours(data.get("estimated_hours"))
+        if problem:
+            errors["estimated_hours"] = problem
     for key in ("start_date", "due_date"):
         if key in data:
             raw = data[key]
@@ -284,6 +306,7 @@ BULK_COLUMNS = [  # (key, header, required, note)
     ("title", "Task Title", True, "Short name of the task (max 255 characters)"),
     ("description", "Description", False, "What needs to be done"),
     ("week", "Week", False, "Week number of the project plan (1-4 online, 1-3 offline). Used for the dates when Start/Due Date are blank"),
+    ("estimated_hours", "Estimated Hours", True, "Estimated duration of the task in hours (0.25 to 1000)"),
     ("priority", "Priority", False, "low, medium, high or critical (default medium)"),
     ("status", "Status", False, "backlog, todo, in_progress, in_review or completed (default todo)"),
     ("assignees", "Assigned To", False, "Email or registration number of project member(s); separate several with commas"),
@@ -303,7 +326,7 @@ def bulk_template(project, fmt):
     from app.services.metrics_service import project_weeks
     headers = [c[1] for c in BULK_COLUMNS]
     first = project.members[0].student if project.members else None
-    example = ["Design the login screen", "Wireframes and UI for login", 1, "medium", "todo",
+    example = ["Design the login screen", "Wireframes and UI for login", 1, 6, "medium", "todo",
                first.user.email if first else "student@example.com", "", ""]
     if fmt == "csv":
         import csv
@@ -349,7 +372,6 @@ def bulk_create_tasks(project, filename, content, user):
 
     Returns {"created": n, "errors": [{"row": n, "message": ...}]}; rows are numbered as in the sheet (header = row 1).
     """
-    from datetime import timedelta
     from app.services.import_service import read_upload
     from app.services.metrics_service import project_weeks
     _require(board_permissions(user, project), "can_create", user)
@@ -359,6 +381,8 @@ def bulk_create_tasks(project, filename, content, user):
             for key, header, _, _ in BULK_COLUMNS}
     if cols["title"] is None:
         raise AppError("The file has no 'Task Title' column. Download the template and fill that in.", 422)
+    if cols["estimated_hours"] is None:
+        raise AppError("The file has no 'Estimated Hours' column. Download the latest template and fill that in.", 422)
     if len(df) > MAX_BULK_TASKS:
         raise AppError(f"Too many tasks (max {MAX_BULK_TASKS} per file)", 422)
 
@@ -374,7 +398,7 @@ def bulk_create_tasks(project, filename, content, user):
         if not any(str(v).strip() for v in rec.values()):
             continue                                                         # blank line
         problems = []
-        data = {"title": get("title"), "description": get("description")}
+        data = {"title": get("title"), "description": get("description"), "estimated_hours": get("estimated_hours")}
         data["priority"], err = _enum(get("priority"), TASK_PRIORITIES, "medium", "Priority")
         problems += [err] if err else []
         data["status"], err = _enum(get("status"), TASK_STATUSES, "todo", "Status")
@@ -457,6 +481,7 @@ def task_to_dict(task, comment_count=None):
         "assignees": [{"student_id": i, "name": _assignee_name(i)} for i in assignee_ids(task)],
         "assignee": {"student_id": task.assigned_student_id, "name": _assignee_name(task.assigned_student_id)} if task.assigned_student_id else None,
         "created_by": {"id": u.id, "name": u.name} if u else None,
+        "estimated_hours": None if task.estimated_hours is None else float(task.estimated_hours),
         "start_date": task.start_date.isoformat() if task.start_date else None,
         "due_date": task.due_date.isoformat() if task.due_date else None,
         "completed_at": task.completed_at.isoformat() if task.completed_at else None,
@@ -490,6 +515,47 @@ def stats_for(tasks):
     return {"total": total, "completed": done, "overdue": sum(1 for t in tasks if is_overdue(t)),
             "completion_pct": round(done * 100 / total, 1) if total else 0.0,
             "by_status": {s: sum(1 for t in tasks if t.status == s) for s in TASK_STATUSES}}
+
+
+def burn_data(project, today=None):
+    """Daily burndown / burnup series in estimated hours.
+
+    A task counts towards the scope from the day it was created and as done from the day it was completed. Its current
+    estimate is used for every day. Deleted tasks are left out; tasks without an estimate are only counted separately.
+    """
+    today = today or utcnow().date()
+    board = db.session.query(ScrumBoard).filter_by(project_id=project.id).first()
+    tasks = db.session.query(ScrumTask).filter_by(board_id=board.id, is_archived=False).all() if board else []
+    rows = []   # (hours, day added, day completed or None)
+    for t in tasks:
+        if t.estimated_hours is None:
+            continue
+        done = (t.completed_at or t.updated_at).date() if t.status == "completed" else None
+        rows.append((float(t.estimated_hours), t.created_at.date(), done))
+    total = round(sum(h for h, _, _ in rows), 2)
+    completed = round(sum(h for h, _, done in rows if done), 2)
+    out = {"total_hours": total, "completed_hours": completed, "remaining_hours": round(total - completed, 2),
+           "unestimated": len(tasks) - len(rows), "start_date": None, "end_date": None, "points": []}
+    if not rows:
+        return out
+
+    start = min([added for _, added, _ in rows] + ([project.start_date] if project.start_date else []))
+    last_done = max((done for _, _, done in rows if done), default=start)
+    # the chart runs to the target date, and past it while work is still open
+    end = max(project.target_end_date or today, last_done, today if completed < total else start)
+    end = min(end, start + timedelta(days=MAX_BURN_DAYS - 1))
+    planned = max(((project.target_end_date or end) - start).days, 1)
+    for n in range((end - start).days + 1):
+        day = start + timedelta(days=n)
+        point = {"date": day.isoformat(), "ideal": round(total * max(0, 1 - n / planned), 2),
+                 "scope": None, "completed": None, "remaining": None}
+        if day <= today:     # nothing is known about the future
+            scope = sum(h for h, added, _ in rows if added <= day)
+            done_hours = sum(h for h, added, done in rows if done and done <= day and added <= day)
+            point.update(scope=round(scope, 2), completed=round(done_hours, 2), remaining=round(scope - done_hours, 2))
+        out["points"].append(point)
+    out.update(start_date=start.isoformat(), end_date=end.isoformat())
+    return out
 
 
 def board_view(project, user, include_archived=False):

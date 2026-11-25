@@ -65,7 +65,7 @@ def _new_batch(portal, item, actor):
     db.session.flush()
     notify(domain_lead_user_ids(batch.domain_id), "batch_assigned", "Batch enrolled from " + portal.name,
            f"Batch {batch.code} - {batch.name} was enrolled from {portal.name} into {domain.name}. "
-           "Please set the project start and end dates for this batch.", f"/lead/batches/{batch.id}")
+           "Please check the project start and end dates for this batch.", f"/lead/batches/{batch.id}")
     notify(domain_mentor_user_ids(batch.domain_id), "batch_in_domain", "New batch in your domain",
            f"Batch {batch.code} - {batch.name} was added to {domain.name}.", None)
     if actor is not None:
@@ -125,7 +125,9 @@ def apply(portal, payload, actor):
                     batch.name = str(item["name"])[:150]
                 for key in ("start_date", "end_date"):
                     if item.get(key):
-                        setattr(batch, key, parse_date(item[key]))
+                        value = parse_date(item[key])
+                        setattr(batch, key, value)
+                        setattr(batch, f"project_{key}", value)
                 created = "batches_updated"
             db.session.commit()
             summary[created] += 1

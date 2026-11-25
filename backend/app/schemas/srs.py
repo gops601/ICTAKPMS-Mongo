@@ -28,7 +28,7 @@ def submission_to_dict(sub):
         "id": sub.id, "version": sub.version, "status": sub.status, "description": sub.description,
         "submitted_at": sub.submitted_at.isoformat() if sub.submitted_at else None,
         "submitted_by": sub.submitted_by,
-        "file": {"name": f.original_name, "size_bytes": f.size_bytes, "mime_type": f.mime_type},
+        "file": {"name": f.original_name, "size_bytes": f.size_bytes, "mime_type": f.mime_type, "url": f.external_url},
         "history": [{"id": h.id, "decision": h.decision, "remarks": h.remarks,
                      "reviewer": h.reviewer.name if h.reviewer else None, "at": h.created_at.isoformat()}
                     for h in history],
@@ -37,10 +37,12 @@ def submission_to_dict(sub):
 
 def srs_summary(project, submissions):
     status = srs_service.srs_status(project)
+    due = srs_service.first_week_due(project)
     return {
         "project_id": project.id, "title": project.title, "stage": project.stage, "status": status,
         "status_label": srs_service.LABELS[status],
         "can_submit": project.stage in srs_service.SUBMITTABLE_STAGES,
         "implementation_unlocked": srs_service.implementation_unlocked(project),
+        "due_date": due.isoformat() if due else None,
         "submissions": [submission_to_dict(s) for s in submissions],
     }
