@@ -90,8 +90,8 @@ function ScrumSummary({ scrum }) {
     { label: 'Overdue', value: scrum.overdue, color: COLORS.critical, icon: null },
   ]
   return (
-    <ChartCard title="Scrum task completion" subtitle={`${scrum.completion_pct}% of ${scrum.total} tasks completed`} empty={scrum.total === 0} height={200}
-      table={{ columns: [{ key: 'label', label: 'Tasks' }, { key: 'value', label: 'Count' }], rows: slices }} summary={`${scrum.completed} completed, ${scrum.overdue} overdue of ${scrum.total} tasks`}>
+    <ChartCard title="Scrum task completion" subtitle={`${scrum.completion_pct}% of ${scrum.total} ${scrum.total === 1 ? 'task' : 'tasks'} completed`} empty={scrum.total === 0} height={200}
+      table={{ columns: [{ key: 'label', label: 'Tasks' }, { key: 'value', label: 'Count' }], rows: slices }} summary={`${scrum.completed} completed, ${scrum.overdue} overdue of ${scrum.total} ${scrum.total === 1 ? 'task' : 'tasks'}`}>
       <Donut slices={slices} />
     </ChartCard>
   )

@@ -16,7 +16,9 @@ function NavItem({ item, onClick }) {
       onClick={onClick}
       className={({ isActive }) =>
         `flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition ${
-          isActive ? 'bg-white text-brand-dark shadow-sm ring-1 ring-rose-200' : 'text-rose-900/75 hover:bg-white/70 hover:text-brand-dark'
+          isActive
+            ? 'bg-white text-brand-dark shadow-md ring-1 ring-white/60 border-l-4 border-accent'
+            : 'text-teal-50/85 hover:bg-white/15 hover:text-white'
         }`
       }
     >
@@ -55,17 +57,17 @@ export default function AppLayout() {
   }
 
   const sidebar = (
-    <div className="flex h-full flex-col border-r border-rose-100 bg-gradient-to-b from-rose-50 via-white to-rose-50 p-4">
-      <div className="mb-6 flex items-center gap-3 px-2">
+    <div className="flex h-full flex-col border-r border-navy-950/40 bg-gradient-to-b from-brand via-brand-dark to-navy-900 p-4 shadow-xl">
+      <div className="mb-6 flex items-center gap-3 rounded-xl bg-white/10 px-3 py-3 ring-1 ring-white/20">
         <LogoMark size={38} />
         <div>
-          <div className="text-lg font-bold leading-tight text-rose-900">{APP_NAME}</div>
-          <div className="text-xs font-medium text-amber-700">{ROLE_LABEL[user.role]}</div>
+          <div className="text-lg font-bold leading-tight text-white">{APP_NAME}</div>
+          <div className="text-xs font-semibold text-amber-300">{ROLE_LABEL[user.role]}</div>
         </div>
       </div>
       <nav aria-label="Main navigation" className="flex-1 space-y-1 overflow-y-auto pr-1">
         {menu.map((m) => <NavItem key={m.to} item={m} onClick={() => setOpen(false)} />)}
-        <div className="my-3 border-t border-rose-200/70" />
+        <div className="my-3 border-t border-white/25" />
         {COMMON_MENU.map((m) => <NavItem key={m.to} item={m} onClick={() => setOpen(false)} />)}
       </nav>
     </div>

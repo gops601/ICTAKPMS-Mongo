@@ -20,9 +20,10 @@ export function useList(fetcher, params) {
   const seq = useRef(0)
   const key = JSON.stringify(params)
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
     const id = ++seq.current
-    setState((s) => ({ ...s, loading: true, error: '' }))
+    // a refresh of the same query keeps the rows on screen instead of swapping them for a spinner
+    setState((s) => ({ ...s, loading: silent && s.items.length > 0 ? false : true, error: '' }))
     try {
       const res = await fetcher(JSON.parse(key))
       if (id === seq.current) setState({ items: res.items, meta: res.meta, loading: false, error: '' })
@@ -37,10 +38,10 @@ export function useList(fetcher, params) {
   // Someone else (a mentor approving, a lead assigning, an admin adding) may have changed the data while this tab was
   // in the background: refresh when the user comes back to it.
   useEffect(() => {
-    const refresh = () => { if (document.visibilityState === 'visible') load() }
+    const refresh = () => { if (document.visibilityState === 'visible') load(true) }
     document.addEventListener('visibilitychange', refresh)
     window.addEventListener('focus', refresh)
     return () => { document.removeEventListener('visibilitychange', refresh); window.removeEventListener('focus', refresh) }
   }, [load])
-  return { ...state, reload: load }
+  return { ...state, reload: () => load(true) }
 }

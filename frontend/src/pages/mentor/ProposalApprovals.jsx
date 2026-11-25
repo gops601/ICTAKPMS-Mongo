@@ -55,7 +55,7 @@ export default function ProposalApprovals() {
             {p.is_group && <div className="mt-1"><StatusBadge tone="blue">Group of {p.members.length}</StatusBadge><ul className="mt-1 text-xs text-slate-600" aria-label={`Group members of ${p.title}`}>{p.members.map((m) => <li key={m.student_id}>{m.name}{m.role ? ` – ${m.role}` : ''}{m.is_submitter ? ' (submitted)' : ''}</li>)}</ul></div>}</div> },
           { key: 'status', header: 'Status', render: (p) => <StatusBadge tone={TONE[p.status]}>{p.status}</StatusBadge> },
           { key: 'actions', header: 'Actions', render: (p) => (
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <button className="btn-secondary" onClick={() => download(p)} aria-label={`${p.file.url ? 'Open' : 'Download'} ${p.file.name}`} title={p.file.url || undefined}>{p.file.url ? <ExternalLink className="h-4 w-4" /> : <Download className="h-4 w-4" />}</button>
               {p.status === 'pending' && <>
                 <button className="btn-primary" onClick={() => open(p, 'approve')}><Check className="h-4 w-4" />Approve</button>

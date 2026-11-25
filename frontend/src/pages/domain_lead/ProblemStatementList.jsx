@@ -42,6 +42,7 @@ export default function ProblemStatementList() {
     source_type: sourceType || undefined, industry: industry || undefined, subdomain_id: subdomainId || undefined, approval_status: approval || undefined,
     page, sort: sort.key, order: sort.order,
   })
+  const subdomainDomain = domains.find((d) => String(d.id) === String(domainId)) || (domains.length === 1 ? domains[0] : null)  // only that domain's subdomains
   const changeType = (e) => { setSourceType(e.target.value); if (e.target.value === 'internal') setIndustry(''); setPage(1) }
   const reset = (fn) => (e) => { fn(e.target.value); setPage(1) }
   const onSort = (key) => setSort((s) => ({ key, order: s.key === key && s.order === 'asc' ? 'desc' : 'asc' }))
@@ -68,12 +69,12 @@ export default function ProblemStatementList() {
       <div className="card">
         <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           <input className="input" placeholder="Search title or ID…" aria-label="Search projects" value={q} onChange={reset(setQ)} />
-          <select className="input" aria-label="Filter by domain" value={domainId} onChange={reset(setDomainId)}>
+          <select className="input" aria-label="Filter by domain" value={domainId} onChange={(e) => { setDomainId(e.target.value); setSubdomainId(''); setPage(1) }}>
             <option value="">All domains</option>{domains.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
           </select>
-          <select className="input" aria-label="Filter by subdomain" value={subdomainId} onChange={reset(setSubdomainId)}>
-            <option value="">All subdomains</option>
-            {domains.filter((d) => !domainId || String(d.id) === String(domainId)).flatMap((d) => (d.subdomains || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>))}
+          <select className="input" aria-label="Filter by subdomain" value={subdomainId} disabled={!subdomainDomain} title={subdomainDomain ? undefined : 'Choose a domain first'} onChange={reset(setSubdomainId)}>
+            <option value="">{subdomainDomain ? 'All subdomains' : 'Choose a domain first'}</option>
+            {(subdomainDomain?.subdomains || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
           <select className="input" aria-label="Filter by approval" value={approval} onChange={reset(setApproval)}>
             <option value="">Any approval</option><option value="approved">Approved</option><option value="pending">Awaiting mentor approval</option><option value="rejected">Rejected</option>

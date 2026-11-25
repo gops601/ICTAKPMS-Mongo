@@ -300,3 +300,42 @@ Containers have `restart: unless-stopped`, so they come back after a server rebo
 
 Backend API documentation is served at `/api/docs`. Consider restricting it at the reverse proxy if you do
 not want it public.
+
+---
+
+## 13. CI/CD with Jenkins
+
+The [Jenkinsfile](Jenkinsfile) runs the backend and frontend tests and builds both images on every branch. On
+`main`, it then waits for approval and updates the server over SSH.
+
+### Jenkins
+
+1. Use a Linux agent with Docker, git and ssh. The `jenkins` user must be able to run Docker
+   (`sudo usermod -aG docker jenkins`, then restart Jenkins). Membership of that group is equivalent to root access.
+2. Install the Pipeline, Git, JUnit and Credentials Binding plugins.
+3. Create a **Multibranch Pipeline** job pointing at the Git repository (add repository credentials if it is private).
+   Add a webhook or periodic scan so that pushes start builds.
+
+### Deployment
+
+Deployment is skipped until `DEPLOY_HOST` is set.
+
+1. Prepare the server with sections 1 to 6. It must be able to `git fetch` the repository without a password prompt,
+   and the SSH user must be able to run Docker.
+2. In Jenkins, add a credential of type **SSH Username with private key** with the ID `pms-deploy-ssh`.
+3. Add the server's host key to `~/.ssh/known_hosts` of the `jenkins` user, after checking its fingerprint
+   (`ssh <user>@<server>` once as that user).
+4. Set the environment variables (*Manage Jenkins → System → Global properties*, or folder properties):
+   - `DEPLOY_HOST`: the server's host name or IP
+   - `DEPLOY_DIR`: the project folder on the server, absolute or relative to the SSH user's home
+     (default `ICTAKPMS-Mongo`)
+
+Keep the same project folder on an existing server: the uploads volume name is derived from it.
+
+The server is left on the deployed commit (detached HEAD), so use Jenkins rather than `git pull` for later updates.
+To update by hand, run `git checkout main` first.
+
+The pipeline does not take a backup. Check that the backups in section 9 are running before you approve a deployment.
+
+Rollback: on the server, `git checkout <previous-commit>` (printed in the deployment log), then
+`docker compose up -d --build`.
