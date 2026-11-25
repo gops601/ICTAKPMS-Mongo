@@ -160,6 +160,12 @@ export const proposalService = {
   projectTemplate: (format = 'xlsx') => downloadFile('/proposals/project-template', { format }, `project_template.${format}`),
   dataTemplate: () => downloadFile('/proposals/data-template', undefined, 'data-collection-template.xlsx'),
   downloadDataset: async (p, ds) => (ds.url ? openLink(ds.url) : downloadFile(`/proposals/${p.id}/datasets/${ds.id}/download`, undefined, ds.name)),
+  addDataset: (id, source, description) => {
+    const form = new FormData()
+    appendSource(form, source)
+    if (description) form.append('description', description)
+    return api.post(`/proposals/${id}/datasets`, form).then(d)
+  },
   review: (id, decision, remarks) => api.post(`/proposals/${id}/review`, { decision, remarks }).then(d),
   download: (p) => (p.file.url ? openLink(p.file.url) : downloadFile(`/proposals/${p.id}/download`, undefined, p.file.name)),
 }

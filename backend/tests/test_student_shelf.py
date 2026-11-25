@@ -336,3 +336,27 @@ def test_new_batch_gets_only_the_domain_lead_as_mentor(client, world):
     assert b.status_code == 201
     mentors = client.get(f"/api/batches/{b.get_json()['data']['id']}/mentors", headers=world["H"]["admin"]).get_json()["data"]
     assert [m["email"] for m in mentors] == ["lead@x.com"]          # m1 (an AIML mentor) is not added automatically
+
+
+def test_staff_can_add_a_dataset_when_the_student_submitted_none(client, world):
+    H = world["H"]
+    pid = upload(client, world, datasets=0).get_json()["data"]["id"]
+    p = client.get("/api/proposals", headers=H["m1"]).get_json()["data"][0]
+    assert p["can_add_dataset"] is True
+    assert client.post(f"/api/proposals/{pid}/datasets", headers=H["s1"], data={"url": "https://x.org/d"}).status_code == 403
+    r = client.post(f"/api/proposals/{pid}/datasets", headers=H["m1"], data={"url": "https://x.org/d.csv", "description": "Raw data"})
+    assert r.status_code == 201, r.get_json()
+    ds = r.get_json()["data"]["datasets"]
+    assert len(ds) == 1 and ds[0]["added_by_staff"] is True
+    r = client.post(f"/api/proposals/{pid}/datasets", headers=H["lead"],
+                    data={"file": (io.BytesIO(CSV), "d.csv")}, content_type="multipart/form-data")
+    assert r.status_code == 201, r.get_json()
+    ps = db.session.query(ProblemStatement).one()
+    assert len(ps.datasets) == 2                                    # mirrored onto the shelf entry
+
+
+def test_staff_cannot_add_a_dataset_when_the_student_already_submitted_one(client, world):
+    pid = upload(client, world, datasets=1).get_json()["data"]["id"]
+    p = client.get("/api/proposals", headers=world["H"]["m1"]).get_json()["data"][0]
+    assert p["can_add_dataset"] is False
+    assert client.post(f"/api/proposals/{pid}/datasets", headers=world["H"]["m1"], data={"url": "https://x.org/d"}).status_code == 409

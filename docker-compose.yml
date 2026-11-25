@@ -2,7 +2,8 @@ services:
   # The database is MongoDB Atlas (MONGODB_URI in .env), so there is no database container.
   backend:
     build: ./backend
-    restart: unless-stopped
+    # always restart (crash, Docker restart, PC reboot) so the app stays up while the screen is locked or nobody is logged in
+    restart: always
     env_file: .env
     environment:
       MONGODB_URI: ${MONGODB_URI:?set MONGODB_URI in .env to your MongoDB Atlas connection string}
@@ -11,11 +12,19 @@ services:
     volumes:
       - uploads_data:/app/uploads
     networks: [plms_net]
+    healthcheck:       # startup seeds MongoDB first (~30 s), so allow a generous grace period
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:5000/api/health', timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
 
   frontend:
     build: ./frontend
-    restart: unless-stopped
-    depends_on: [backend]
+    restart: always
+    depends_on:
+      backend:
+        condition: service_healthy
     ports:
       - "${APP_PORT:-8080}:80"
     networks: [plms_net]
