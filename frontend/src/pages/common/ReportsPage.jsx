@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Download, FileSpreadsheet } from 'lucide-react'
+import { Download, FileSpreadsheet, FileText } from 'lucide-react'
 import { batchService, domainService, ouService, reportService } from '../../services/adminService'
 import { errorMessage } from '../../services/api'
 import { useAuth } from '../../context/AuthContext'
@@ -25,6 +25,7 @@ export default function ReportsPage({ title = 'Reports' }) {
   const [loading, setLoading] = useState(false)
   const [exporting, setExporting] = useState('')
   const [detailBatch, setDetailBatch] = useState('')
+  const [consBatch, setConsBatch] = useState('')
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -58,6 +59,10 @@ export default function ReportsPage({ title = 'Reports' }) {
     setExporting(`detail-${format}-${sheet || ''}`); setError('')
     try { await reportService.batchDetailed(detailBatch, format, sheet) } catch (e) { setError(errorMessage(e, 'Download failed')) } finally { setExporting('') }
   }
+  const downloadConsolidated = async (format) => {
+    setExporting(`cons-${format}`); setError('')
+    try { await reportService.batchConsolidated(consBatch, format) } catch (e) { setError(errorMessage(e, 'Download failed')) } finally { setExporting('') }
+  }
   const setFilter = (k) => (e) => { setFilters({ ...filters, [k]: e.target.value }); setPage(1) }
 
   if (!reports) return error ? <Alert>{error}</Alert> : <Spinner />
@@ -75,6 +80,26 @@ export default function ReportsPage({ title = 'Reports' }) {
           <button className="btn-secondary" disabled={!type || Boolean(exporting)} onClick={() => exportAs('csv')}><Download className="h-4 w-4" />{exporting === 'csv' ? 'Exporting…' : 'Export CSV'}</button>
           <button className="btn-primary" disabled={!type || Boolean(exporting)} onClick={() => exportAs('xlsx')}><Download className="h-4 w-4" />{exporting === 'xlsx' ? 'Exporting…' : 'Export Excel'}</button>
         </>} />
+      <section className="card space-y-3" aria-label="Batch consolidated report">
+        <div className="flex items-start gap-3">
+          <FileText className="mt-0.5 h-6 w-6 text-accent" aria-hidden />
+          <div>
+            <h2 className="font-semibold text-slate-900">Batch consolidated student report</h2>
+            <p className="text-sm text-slate-500">All students of one batch in a single table: project, mentor, stage, progress, weekly evaluation % and overall score, with a batch summary. Download as Excel or PDF.</p>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <select className="input !w-auto" aria-label="Batch for consolidated report" value={consBatch} onChange={(e) => setConsBatch(e.target.value)}>
+            <option value="">Select a batch…</option>{options.batch_id.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+          <button className="btn-primary" disabled={!consBatch || Boolean(exporting)} onClick={() => downloadConsolidated('xlsx')}>
+            <Download className="h-4 w-4" />{exporting === 'cons-xlsx' ? 'Preparing…' : 'Download Excel'}
+          </button>
+          <button className="btn-secondary" disabled={!consBatch || Boolean(exporting)} onClick={() => downloadConsolidated('pdf')}>
+            <Download className="h-4 w-4" />{exporting === 'cons-pdf' ? 'Preparing…' : 'Download PDF'}
+          </button>
+        </div>
+      </section>
       {user.role !== 'mentor' && (
         <section className="card space-y-3" aria-label="Batch detailed report">
           <div className="flex items-start gap-3">

@@ -272,6 +272,8 @@ export const reportService = {
   list: () => api.get('/reports').then(d),
   get: (type, params) => api.get(`/reports/${type}`, { params }).then((r) => ({ ...r.data.data, meta: r.data.meta })),
   download: (type, format, params) => downloadFile(`/reports/${type}`, { ...params, format }, `${type}.${format}`),
+  /** Consolidated student report for one batch: format 'xlsx' or 'pdf'. */
+  batchConsolidated: (batchId, format = 'xlsx') => downloadFile(`/reports/batch-consolidated/${batchId}`, { format }, `batch_${batchId}_consolidated_report.${format}`),
   /** Detailed single-batch report: format 'xlsx' (all sheets) or 'csv' with sheet students|weekly|criteria. */
   batchDetailed: (batchId, format = 'xlsx', sheet) => downloadFile(`/reports/batch-detailed/${batchId}`, { format, sheet }, `batch_${batchId}_detailed_report.${format}`),
 }

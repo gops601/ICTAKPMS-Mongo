@@ -370,3 +370,17 @@ def test_mentor_dashboard_counts_the_project_started_by_their_approval(client, w
     lead = client.get("/api/dashboard", headers=world["H"]["lead"]).get_json()["data"]
     assert lead["counts"]["projects_allocated"] == 1
     assert [r["mentor"] for r in lead["mentor_review_completion"]] == [world["mentor_user"].name]
+
+
+def test_batch_consolidated_report_downloads_as_excel_and_pdf(client, world):
+    from openpyxl import load_workbook
+    bid = world["batch"].id
+    for who in ("admin", "lead", "m1"):
+        x = client.get(f"/api/reports/batch-consolidated/{bid}?format=xlsx", headers=world["H"][who])
+        assert x.status_code == 200, (who, x.get_data(as_text=True)[:200])
+        ws = load_workbook(io.BytesIO(x.data))["Students"]
+        assert ws.max_row == 2 and ws["B2"].value == world["student"].user.name        # header + the batch's one student
+        p = client.get(f"/api/reports/batch-consolidated/{bid}?format=pdf", headers=world["H"][who])
+        assert p.status_code == 200 and p.mimetype == "application/pdf" and p.data.startswith(b"%PDF")
+    assert client.get(f"/api/reports/batch-consolidated/{bid}", headers=world["H"]["s1"]).status_code == 403
+    assert client.get(f"/api/reports/batch-consolidated/{bid}?format=csv", headers=world["H"]["admin"]).status_code == 422

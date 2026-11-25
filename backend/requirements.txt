@@ -8,6 +8,7 @@ marshmallow==3.*
 cryptography
 pandas
 openpyxl
+reportlab
 bleach
 gunicorn
 python-dotenv

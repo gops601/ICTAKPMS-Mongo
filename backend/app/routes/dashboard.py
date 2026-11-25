@@ -68,6 +68,29 @@ def report(report_type):
     return ok(data, meta={"page": page, "per_page": per, "total": total, "pages": max(1, -(-total // per))})
 
 
+@bp.get("/reports/batch-consolidated/<int:batch_id>")
+@bp.doc(security=SEC, description="Consolidated student report for ONE batch (admin, domain lead of its domain, or a mentor of the batch): "
+                                  "batch summary plus every student's project, mentor, stage, progress, weekly % and overall score. "
+                                  "format=xlsx (default) | pdf.")
+@roles_required("admin", "domain_lead", "mentor")
+def batch_consolidated_report(batch_id):
+    user = current_user()
+    batch = ensure_batch_access(user, batch_id)
+    fmt = request.args.get("format", "xlsx")
+    if fmt not in ("xlsx", "pdf"):
+        raise AppError("format must be xlsx or pdf", 422)
+    data = reporting.batch_consolidated(user, batch)
+    audit(user.id, "report.export", "batch", batch.id, {"type": "batch-consolidated", "format": fmt})
+    db.session.commit()
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    if fmt == "pdf":
+        body, mime = reporting.consolidated_to_pdf(data), "application/pdf"
+    else:
+        body, mime = reporting.consolidated_to_xlsx(data), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    return Response(body, mimetype=mime, headers={"Content-Disposition": f'attachment; filename="{batch.code}_consolidated_report_{stamp}.{fmt}"',
+                                                  "X-Content-Type-Options": "nosniff"})
+
+
 @bp.get("/reports/batch-detailed/<int:batch_id>")
 @bp.doc(security=SEC, description="Detailed report for ONE batch (admin / domain lead of its domain): summary, every student's project "
                                   "status, weekly scores with remarks, per-criterion marks. format=xlsx (all sheets, default) | csv "
