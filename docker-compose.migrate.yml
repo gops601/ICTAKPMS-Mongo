@@ -1,0 +1,42 @@
+# One-time copy of the old MySQL data (volume mysql_data) into MongoDB Atlas. Keep the old MYSQL_* lines in .env
+# until this has run.
+#
+#   docker compose stop backend frontend
+#   docker compose -f docker-compose.yml -f docker-compose.migrate.yml run --rm --build migrate
+#   docker compose -f docker-compose.yml -f docker-compose.migrate.yml stop db
+#   docker compose up -d --build --remove-orphans
+services:
+  db:
+    image: mysql:8.0
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$$MYSQL_USER -p$$MYSQL_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    networks: [plms_net]
+
+  migrate:
+    build: ./backend
+    env_file: .env
+    environment:
+      MONGODB_URI: ${MONGODB_URI}
+      MONGODB_DB: ${MONGODB_DB:-plms}
+      # a password containing @ : / ? # must be percent-encoded: pass your own MYSQL_URL in that case
+      MYSQL_URL: ${MYSQL_URL:-mysql+pymysql://${MYSQL_USER}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE}?charset=utf8mb4}
+      UPLOAD_FOLDER: /tmp/uploads
+    entrypoint: ["sh", "-c", "pip install --quiet --user -r requirements-migrate.txt && python scripts/migrate_mysql_to_mongo.py"]
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [plms_net]
+
+volumes:
+  mysql_data:

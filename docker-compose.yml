@@ -1,0 +1,28 @@
+services:
+  # The database is MongoDB Atlas (MONGODB_URI in .env), so there is no database container.
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      MONGODB_URI: ${MONGODB_URI:?set MONGODB_URI in .env to your MongoDB Atlas connection string}
+      MONGODB_DB: ${MONGODB_DB:-plms}
+      UPLOAD_FOLDER: /app/uploads
+    volumes:
+      - uploads_data:/app/uploads
+    networks: [plms_net]
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on: [backend]
+    ports:
+      - "${APP_PORT:-8080}:80"
+    networks: [plms_net]
+
+volumes:
+  uploads_data:
+
+networks:
+  plms_net:
+    driver: bridge

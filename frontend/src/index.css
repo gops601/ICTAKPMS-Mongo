@@ -1,0 +1,35 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body { @apply bg-canvas text-slate-800 antialiased; }
+:focus-visible { @apply outline-none ring-2 ring-brand/50 ring-offset-1; }
+
+.input { @apply w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm placeholder:text-slate-400 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/25; }
+.btn { @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-60; }
+.btn-primary { @apply btn bg-brand text-white shadow-sm hover:bg-brand-dark; }
+.btn-secondary { @apply btn border border-slate-200 bg-white text-slate-700 shadow-sm hover:border-brand/40 hover:bg-brand-light/40 hover:text-brand-dark; }
+.btn-danger { @apply btn border border-red-200 bg-white text-red-700 shadow-sm hover:bg-red-50; }
+.card { @apply rounded-2xl bg-white p-5 shadow-soft ring-1 ring-slate-200/70; }
+.label { @apply mb-1 block text-sm font-medium text-slate-700; }
+.hero-gradient { background: linear-gradient(135deg, #eaf6f9 0%, #d6eef4 45%, #c7e9f0 110%); }
+.banner-gradient { background: linear-gradient(120deg, #d6eef4 0%, #aedde8 55%, #8fd0e0 150%); }
+
+.rich-content ul { @apply list-disc pl-6; }
+.rich-content ol { @apply list-decimal pl-6; }
+.rich-content h1, .rich-content h2, .rich-content h3, .rich-content h4 { @apply mt-2 font-semibold; }
+.rich-content p { @apply mb-2; }
+.rich-content a { @apply text-brand underline; }
+.rich-content table { @apply my-2 border-collapse; }
+.rich-content th, .rich-content td { @apply border border-slate-300 px-2 py-1; }
+.rich-content blockquote { @apply border-l-4 border-slate-300 pl-3 text-slate-600; }
+.rich-content pre, .rich-content code { @apply rounded bg-slate-100 px-1 font-mono text-xs; }
+
+/* AI artwork motion (disabled for users who prefer reduced motion) */
+@keyframes ai-pulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+@keyframes ai-flow { to { stroke-dashoffset: -24; } }
+@keyframes ai-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+.ai-node { animation: ai-pulse 3.2s ease-in-out infinite; }
+.ai-link { stroke-dasharray: 4 8; animation: ai-flow 2.4s linear infinite; }
+.ai-float { animation: ai-float 6s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .ai-node, .ai-link, .ai-float { animation: none; } }

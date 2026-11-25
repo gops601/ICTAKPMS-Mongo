@@ -1,0 +1,138 @@
+"""Single source of truth for project progress, delay and score metrics.
+
+`project_metrics()` computes everything for MANY projects with a handful of grouped queries (no per-project
+round trips), and the single-project helpers in project_service delegate to it. Dashboards, reports and the
+project page therefore can never disagree about a project's progress or whether it is delayed.
+"""
+from datetime import date, timedelta
+
+from app.extensions import db
+from app.models import (Batch, EvaluationCriterion, EvaluationScore, ProjectGithubRepository, ProjectReview, ScrumBoard,
+                        ScrumTask, SystemSetting)
+from app.services import lifecycle
+
+PROJECT_WEEKS = 4                       # online batches
+WEEKS_BY_MODE = {"online": 4, "offline": 3}
+WEEK_PHASES = {1: "SRS & datasets"}      # week 1 everywhere; every later week is implementation
+MODE_LABELS = {"online": "Online", "offline": "Offline"}
+
+
+def weeks_for(mode):
+    return WEEKS_BY_MODE.get(mode or "online", PROJECT_WEEKS)
+
+
+def project_weeks(project):
+    """Length of this project's plan: 4 weeks for an online batch, 3 for an offline one."""
+    return weeks_for(project.batch.mode if project.batch else None)
+
+
+def phase_for(week):
+    return WEEK_PHASES.get(week, "Implementation")
+DEFAULT_WEIGHTS = {"srs": 20, "github": 5, "scrum": 25, "reviews": 40, "final": 10}
+_APPROVED = lifecycle.ORDER["srs_approved"]
+
+
+def progress_weights():
+    """Configurable (system_settings.progress_weights), normalised to 100."""
+    row = db.session.get(SystemSetting, "progress_weights")
+    weights = {**DEFAULT_WEIGHTS, **(row.value if row and isinstance(row.value, dict) else {})}
+    total = sum(weights.values()) or 1
+    return {k: v * 100 / total for k, v in weights.items()}
+
+
+def project_metrics(projects, today=None):
+    """{project_id: metrics dict} for the given Project objects."""
+    today = today or date.today()
+    ids = [p.id for p in projects]
+    if not ids:
+        return {}
+    w = progress_weights()
+    modes = dict(db.session.query(Batch.id, Batch.mode).filter(Batch.id.in_({p.batch_id for p in projects})).all())   # one query for all
+
+    reviews = {i: [] for i in ids}
+    for pid, week, status, due in (db.session.query(ProjectReview.project_id, ProjectReview.week_no, ProjectReview.status,
+                                                    ProjectReview.due_date).filter(ProjectReview.project_id.in_(ids))):
+        reviews[pid].append((week, status, due))
+
+    # score totals of SUBMITTED reviews only
+    scores = {i: [0.0, 0.0] for i in ids}  # [obtained, max]
+    for project_id, got, mx in _submitted_totals(ids).values():
+        scores[project_id][0] += got
+        scores[project_id][1] += mx
+
+    github = {r[0] for r in db.session.query(ProjectGithubRepository.project_id).filter(ProjectGithubRepository.project_id.in_(ids))}
+
+    tasks = {i: {"total": 0, "completed": 0, "overdue": 0} for i in ids}
+    boards = dict(db.session.query(ScrumBoard.id, ScrumBoard.project_id).filter(ScrumBoard.project_id.in_(ids)).all())
+    q = (db.session.query(ScrumTask.board_id, ScrumTask.status, ScrumTask.due_date)
+         .filter(ScrumTask.board_id.in_(boards), ScrumTask.is_archived.is_(False)))
+    for board_id, status, due in q:
+        t = tasks[boards[board_id]]
+        t["total"] += 1
+        if status == "completed":
+            t["completed"] += 1
+        elif due and due < today:
+            t["overdue"] += 1
+
+    out = {}
+    for p in projects:
+        order = lifecycle.ORDER[p.stage]
+        rv = reviews[p.id]
+        submitted = sum(1 for _, s, _ in rv if s == "submitted")
+        overdue_reviews = sum(1 for _, s, d in rv if s != "submitted" and d and d < today)
+        due_reviews = sum(1 for _, s, d in rv if s != "submitted" and d and d <= today)
+        t = tasks[p.id]
+        done = 0.0
+        if order >= _APPROVED:
+            done += w["srs"]
+        if p.id in github:
+            done += w["github"]
+        if t["total"]:
+            done += w["scrum"] * t["completed"] / t["total"]
+        done += w["reviews"] * submitted / weeks_for(modes.get(p.batch_id))
+        if p.stage == "completed" or p.final_signed_off_by:
+            done += w["final"]
+
+        reasons = []
+        if p.stage != "completed":
+            if overdue_reviews:
+                reasons.append(f"{overdue_reviews} weekly review(s) overdue")
+            if p.start_date and p.start_date + timedelta(weeks=1) < today and order < _APPROVED:
+                reasons.append("SRS not approved after week 1")
+            if t["overdue"]:
+                reasons.append(f"{t['overdue']} Scrum task(s) overdue")
+
+        got, mx = scores[p.id]
+        out[p.id] = {
+            "progress": round(min(done, 100), 1), "delay_reasons": reasons, "is_delayed": bool(reasons),
+            "reviews_submitted": submitted, "reviews_overdue": overdue_reviews, "reviews_due": due_reviews,
+            "reviews": {week: status for week, status, _ in rv},
+            "score_obtained": got, "score_max": mx, "score_pct": round(got * 100 / mx, 2) if mx else None,
+            "has_github": p.id in github, "tasks": t,
+        }
+    return out
+
+
+def review_score_map(project_ids):
+    """{review_id: (obtained, max)} for submitted reviews of the given projects."""
+    if not project_ids:
+        return {}
+    return {rid: (got, mx) for rid, (_, got, mx) in _submitted_totals(project_ids).items()}
+
+
+def _submitted_totals(project_ids):
+    """{review_id: (project_id, obtained, max)} of the submitted reviews that have criteria (three queries in all)."""
+    owner = dict(db.session.query(ProjectReview.id, ProjectReview.project_id)
+                 .filter(ProjectReview.project_id.in_(project_ids), ProjectReview.status == "submitted").all())
+    if not owner:
+        return {}
+    criteria = (db.session.query(EvaluationCriterion.id, EvaluationCriterion.review_id, EvaluationCriterion.max_marks)
+                .filter(EvaluationCriterion.review_id.in_(owner)).all())
+    obtained = dict(db.session.query(EvaluationScore.criterion_id, EvaluationScore.marks_obtained)
+                    .filter(EvaluationScore.criterion_id.in_([c.id for c in criteria])).all())
+    totals = {}
+    for c in criteria:
+        row = totals.setdefault(c.review_id, [0, 0])
+        row[0] += obtained.get(c.id) or 0
+        row[1] += c.max_marks
+    return {rid: (owner[rid], float(got), float(mx)) for rid, (got, mx) in totals.items()}
