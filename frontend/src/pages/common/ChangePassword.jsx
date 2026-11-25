@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { ROLE_HOME } from '../../utils/roles'
 import Alert from '../../components/Alert'
 import { useAuth } from '../../context/AuthContext'
 import { authService } from '../../services/authService'
@@ -6,6 +8,7 @@ import { errorMessage } from '../../services/api'
 
 export default function ChangePassword() {
   const { user, refreshUser } = useAuth()
+  const navigate = useNavigate()
   const [form, setForm] = useState({ current: '', next: '', confirm: '' })
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -22,7 +25,9 @@ export default function ChangePassword() {
       await authService.changePassword(form.current, form.next)
       setSuccess('Password changed successfully.')
       setForm({ current: '', next: '', confirm: '' })
-      await refreshUser()
+      const wasTemporary = user.must_change_password
+      const fresh = await refreshUser()
+      if (wasTemporary) navigate(ROLE_HOME[(fresh || user).role] || '/', { replace: true })
     } catch (err) {
       setError(errorMessage(err))
     } finally {

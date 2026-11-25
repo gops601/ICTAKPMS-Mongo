@@ -51,7 +51,7 @@ function AddStudentModal({ batches, onClose, onSaved }) {
         <div><label htmlFor="s-name" className="label">Name *</label><input id="s-name" className="input" required value={form.name} onChange={set('name')} />{err('name')}</div>
         <div><label htmlFor="s-email" className="label">Email *</label><input id="s-email" type="email" className="input" required value={form.email} onChange={set('email')} />{err('email')}</div>
         <div><label htmlFor="s-phone" className="label">Phone</label><input id="s-phone" className="input" value={form.phone} onChange={set('phone')} /></div>
-        <div><label htmlFor="s-reg" className="label">Registration number</label><input id="s-reg" className="input" placeholder="Leave blank to auto-generate (e.g. ACADEMIC_ONLINE_0001)" value={form.registration_no} onChange={set('registration_no')} /></div>
+        <div><label htmlFor="s-reg" className="label">Registration number</label><input id="s-reg" className="input" placeholder="Leave blank to auto-generate (e.g. ML-AI-ST01)" value={form.registration_no} onChange={set('registration_no')} /></div>
         <div className="flex justify-end gap-2">
           <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
           <button className="btn-primary" disabled={busy}>{busy ? 'Saving…' : 'Create student'}</button>

@@ -49,9 +49,10 @@ export default function TaskModal({ projectId, taskId, members, permissions, onC
       start_date: form.start_date || null, due_date: form.due_date || null,
     }
     try {
-      if (creating) await scrumService.create(projectId, { ...body, status: form.status })
+      let created = null
+      if (creating) created = await scrumService.create(projectId, { ...body, status: form.status })
       else fill(await scrumService.update(taskId, { ...body, version: task.version }))
-      onChanged()
+      onChanged(created)
       if (creating) onClose()
     } catch (err) { setError(errorMessage(err)); setErrs(fieldErrors(err)) } finally { setBusy(false) }
   }

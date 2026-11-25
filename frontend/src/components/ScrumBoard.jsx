@@ -85,6 +85,15 @@ export default function ScrumBoard({ projectId }) {
     try { setBoard(await scrumService.board(projectId)); setError('') } catch (e) { setError(errorMessage(e)) }
   }, [projectId])
   useEffect(() => { load() }, [load])
+  // A task the server just created is shown at once; the board is then refreshed in the background.
+  const changed = (created) => {
+    if (created?.id) {
+      setBoard((b) => b && !b.columns.some((c) => c.tasks.some((t) => t.id === created.id))
+        ? { ...b, stats: b.stats && { ...b.stats, total: (b.stats.total || 0) + 1 },
+            columns: b.columns.map((c) => (c.status === created.status ? { ...c, tasks: [...c.tasks, created] } : c)) } : b)
+    }
+    load()
+  }
 
   const moveTo = async (taskId, status, index) => {
     const before = board
@@ -120,7 +129,7 @@ export default function ScrumBoard({ projectId }) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-slate-600" aria-label="Board summary">
-          <span>{stats.total} tasks</span><span>{stats.completed} done ({stats.completion_pct}%)</span>
+          <span>{stats.total} {stats.total === 1 ? 'task' : 'tasks'}</span><span>{stats.completed} done ({stats.completion_pct}%)</span>
           <span className={stats.overdue ? 'font-medium text-red-600' : ''}>{stats.overdue} overdue</span>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -158,7 +167,7 @@ export default function ScrumBoard({ projectId }) {
       {modal === 'bulk' && <BulkTasksModal projectId={projectId} onClose={() => setModal(null)} onDone={(b) => b && setBoard(b)} />}
       {modal && modal !== 'bulk' && (
         <TaskModal projectId={projectId} taskId={modal === 'new' ? null : modal.taskId} members={board.members} permissions={perms}
-          onClose={() => setModal(null)} onChanged={load} />
+          onClose={() => setModal(null)} onChanged={changed} />
       )}
     </div>
   )

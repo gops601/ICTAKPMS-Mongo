@@ -128,11 +128,11 @@ def test_student_registration_number_is_generated_when_blank(client, world):
     assert r.status_code == 201, r.get_json()
     body = r.get_json()["data"]
     reg = body["student"]["registration_no"] if "student" in body else body["registration_no"]
-    assert OUID.match(reg) and reg.endswith("_0001")
+    assert re.fullmatch(r"[A-Z0-9-]+-ST01", reg) and not OUID.match(reg)
     r = client.post("/api/students", headers=world["H"]["admin"],
                     json={"name": "Next Student", "email": "next@x.com", "batch_id": world["batch"].id})
     body = r.get_json()["data"]
-    assert (body["student"]["registration_no"] if "student" in body else body["registration_no"]).endswith("_0002")
+    assert (body["student"]["registration_no"] if "student" in body else body["registration_no"]).endswith("-ST02")
 
 
 def test_id_generator_mixes_letters_and_digits():

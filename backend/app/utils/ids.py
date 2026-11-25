@@ -25,6 +25,14 @@ def scoped_prefix(ou_code, mode):
     return f"{ou}_{(mode or 'online').strip().upper()}_"
 
 
+def student_prefix(batch):
+    """``ML-AI-ST`` - the batch's domain code (else its OU code) + ``-ST``. Student registration numbers are
+    ``<prefix><NN>`` and deliberately look different from the ``<OU>_<MODE>_NNNN`` batch and project IDs."""
+    domain = getattr(batch, "domain", None)
+    base = re.sub(r"[^A-Za-z0-9]+", "-", (domain.code if domain else None) or batch.ou.code or "").strip("-").upper() or "OU"
+    return f"{base}-ST"
+
+
 def highest_scoped_number(prefix, column):
     from app.extensions import db
     issued = db.session.query(column).filter(column.startswith(prefix)).values_list()

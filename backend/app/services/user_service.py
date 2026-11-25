@@ -7,7 +7,7 @@ from app.models import (Batch, BatchMentor, DomainLead, Mentor, Notification, Pa
                         Role, Student, StudentProposal, User)
 from app.services.auth_service import create_user, validate_password_strength
 from app.utils.errors import AppError, NotFound
-from app.utils.ids import highest_scoped_number, scoped_prefix
+from app.utils.ids import student_prefix
 
 
 def generate_temp_password():
@@ -98,13 +98,15 @@ def create_students(rows):
     highest, users, profiles = {}, [], []
     for row, email, registration_no in zip(rows, emails, given):
         batch = row["batch"]
-        if not registration_no:  # left blank: the system issues <OU>_<MODE>_NNNN, numbered per OU + mode across all batches
-            prefix = scoped_prefix(batch.ou.code, batch.mode)
-            if prefix not in highest:
-                typed = [int(g[len(prefix):]) for g in given if g.upper().startswith(prefix) and g[len(prefix):].isdigit()]
-                highest[prefix] = max([highest_scoped_number(prefix, Student.registration_no), *typed])
-            highest[prefix] += 1
-            registration_no = f"{prefix}{highest[prefix]:04d}"
+        if not registration_no:  # left blank: the system issues <DOMAIN>-ST<NN> (e.g. ML-AI-ST01), numbered within the batch
+            prefix = student_prefix(batch)
+            if (batch.id, prefix) not in highest:
+                existing = db.session.query(Student.registration_no).filter(Student.batch_id == batch.id).values_list()
+                typed = [g for g in given if g]
+                highest[(batch.id, prefix)] = max((int(v[len(prefix):]) for v in [*existing, *typed]
+                                                   if v.upper().startswith(prefix) and v[len(prefix):].isdigit()), default=0)
+            highest[(batch.id, prefix)] += 1
+            registration_no = f"{prefix}{highest[(batch.id, prefix)]:02d}"
         if (batch.id, registration_no.lower()) in taken_regs:
             raise AppError(f"Registration number '{registration_no}' already exists in this batch", 409)
         taken_regs.add((batch.id, registration_no.lower()))

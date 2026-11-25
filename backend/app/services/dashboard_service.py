@@ -302,8 +302,12 @@ def mentor_dashboard(user, filters=None):
                 review_queue.append({"review_id": r.id, "week_no": r.week_no, "due_date": r.due_date.isoformat() if r.due_date else None,
                                      "is_overdue": bool(r.due_date and r.due_date < date.today()), "status": r.status,
                                      "project": p.title, "students": [x.student.user.name for x in p.members]})
+    scope_batches = mentor_batch_ids(user)       # every student in the mentor's batches, whether or not a project is allocated yet
+    if (filters or {}).get("batch_id"):
+        scope_batches = scope_batches & {int(filters["batch_id"])}
+    batch_students = db.session.query(Student).filter(Student.batch_id.in_(scope_batches or [-1])).count()
     counts = {
-        "assigned_batches": 1 if (filters or {}).get("batch_id") else len(mentor_batch_ids(user)), "students": len(student_ids), "active_projects": len(active),
+        "assigned_batches": len(scope_batches), "students": max(batch_students, len(student_ids)), "active_projects": len(active),
         "srs_pending_approval": sum(1 for p in mine if p.stage in AWAITING_SRS),
         "srs_approved": sum(1 for p in mine if lifecycle.ORDER[p.stage] >= lifecycle.ORDER["srs_approved"]),
         "reviews_pending": sum(len(v) for v in pending.values()),
