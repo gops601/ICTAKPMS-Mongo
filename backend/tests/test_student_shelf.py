@@ -360,3 +360,13 @@ def test_staff_cannot_add_a_dataset_when_the_student_already_submitted_one(clien
     p = client.get("/api/proposals", headers=world["H"]["m1"]).get_json()["data"][0]
     assert p["can_add_dataset"] is False
     assert client.post(f"/api/proposals/{pid}/datasets", headers=world["H"]["m1"], data={"url": "https://x.org/d"}).status_code == 409
+
+
+def test_mentor_dashboard_counts_the_project_started_by_their_approval(client, world):
+    pid = upload(client, world).get_json()["data"]["id"]
+    assert client.post(f"/api/proposals/{pid}/review", headers=world["H"]["m1"], json={"decision": "approve"}).status_code == 200
+    d = client.get("/api/dashboard", headers=world["H"]["m1"]).get_json()["data"]
+    assert d["counts"]["active_projects"] == 1 and d["counts"]["students"] == 1
+    lead = client.get("/api/dashboard", headers=world["H"]["lead"]).get_json()["data"]
+    assert lead["counts"]["projects_allocated"] == 1
+    assert [r["mentor"] for r in lead["mentor_review_completion"]] == [world["mentor_user"].name]
