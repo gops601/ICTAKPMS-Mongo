@@ -63,16 +63,33 @@ def create_staff_user(role, name, email, password, phone=None, domain_id=None, d
                                    linkedin_url, bio) if role == "mentor" or (role == "admin" and also_mentor) else None  # validate before creating the user
     if role == "admin" and also_mentor and not domain_id:
         raise AppError("Choose the domain this administrator will mentor in", 422, {"domain_id": "Domain is required"})
-    user = create_user(role, name, email, password, phone)
+    existing_admin = find_admin_by_email(email) if role in ("mentor", "domain_lead") else None
+    if existing_admin:                          # an administrator's email may also hold a mentor / lead profile
+        user = existing_admin
+        has_mentor = db.session.query(Mentor).filter_by(user_id=user.id).first() is not None
+        if role == "mentor" and has_mentor:
+            raise AppError("This administrator is already a mentor", 409)
+        have = {l.domain_id for l in db.session.query(DomainLead).filter_by(user_id=user.id).all()}
+        if role == "domain_lead" and all(d.id in have for d in domains):
+            raise AppError("This administrator already leads the selected domain(s)", 409)
+        domains = [d for d in domains if d.id not in have]
+    else:
+        has_mentor = False
+        user = create_user(role, name, email, password, phone)
     if role == "admin" and also_mentor:         # an administrator who is also a mentor
         db.session.add(Mentor(user_id=user.id, domain_id=domain_id, expertise=expertise, **profile))
     for i, d in enumerate(domains):
-        db.session.add(DomainLead(user_id=user.id, domain_id=d.id, is_primary=(i == 0)))
+        db.session.add(DomainLead(user_id=user.id, domain_id=d.id, is_primary=(i == 0 and not existing_admin)))
     if role == "mentor":
         db.session.add(Mentor(user_id=user.id, domain_id=domain_id, expertise=expertise, **profile))
-    if role == "domain_lead":                   # every domain lead is also a mentor of the domain(s) they lead
+    if role == "domain_lead" and not has_mentor:  # every domain lead is also a mentor of the domain(s) they lead
         db.session.add(Mentor(user_id=user.id, domain_id=domains[0].id, designation="Domain Lead", mentor_type="internal"))
     return user
+
+
+def find_admin_by_email(email):
+    user = db.session.query(User).filter(User.email == email.strip().lower()).first()
+    return user if user and user.role_name == "admin" else None
 
 
 def create_student(batch, name, email, phone, registration_no, extra_fields=None, password=None):
