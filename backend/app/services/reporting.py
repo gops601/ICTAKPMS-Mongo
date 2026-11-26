@@ -526,3 +526,100 @@ def detailed_to_xlsx(report):
 def detailed_sheet_csv(report, sheet):
     columns, rows = report["sheets"][sheet]
     return to_csv({"columns": columns, "rows": rows})
+
+
+# ------------------------------------------------ consolidated per-batch student report (Excel + PDF)
+CONSOLIDATED_COLS = ("student", "registration_no", "project", "team", "mentor", "stage", "progress", "srs",
+                     "w1_pct", "w2_pct", "w3_pct", "w4_pct", "overall_score_pct", "final_signed_off", "delayed")
+CONSOLIDATED_EXTRA_XLSX = ("email", "phone")
+
+
+def batch_consolidated(user, batch):
+    """One table with every student of the batch (allocated or not), plus the batch summary. Reuses the detailed engine."""
+    data = batch_detailed(user, batch)
+    columns, rows = data["sheets"]["students"]
+    labels = {c["key"]: c["label"] for c in columns}
+    return {"batch": data["batch"], "summary": data["summary"], "labels": labels, "keys": CONSOLIDATED_COLS, "rows": rows,
+            "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")}
+
+
+def consolidated_to_xlsx(report):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Summary"
+    ws.append([f"Consolidated student report - {report['batch']['code']}"])
+    ws["A1"].font = Font(bold=True, size=14)
+    ws.append([])
+    for k, v in report["summary"]:
+        ws.append([k, _safe(v)])
+        ws.cell(row=ws.max_row, column=1).font = Font(bold=True)
+    ws.column_dimensions["A"].width = 26
+    ws.column_dimensions["B"].width = 60
+    sh = wb.create_sheet("Students")
+    keys = ("student", "registration_no", *CONSOLIDATED_EXTRA_XLSX, *CONSOLIDATED_COLS[2:])
+    sh.append(["#", *[report["labels"].get(k, k.replace("_", " ").title()) for k in keys]])
+    for cell in sh[1]:
+        cell.font = Font(bold=True)
+    for i, r in enumerate(report["rows"], 1):
+        sh.append([i, *[_safe(r.get(k)) for k in keys]])
+    sh.column_dimensions["A"].width = 5
+    for i, k in enumerate(keys, 2):
+        width = max([len(str(report["labels"].get(k, k)))] + [len(str(r.get(k) or "")) for r in report["rows"][:200]])
+        sh.column_dimensions[sh.cell(row=1, column=i).column_letter].width = min(max(width + 2, 8), 45)
+    sh.freeze_panes = "A2"
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def consolidated_to_pdf(report):
+    from xml.sax.saxutils import escape
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.units import mm
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+    teal = colors.HexColor("#0a819f")
+    styles = getSampleStyleSheet()
+    cell = ParagraphStyle("cell", parent=styles["BodyText"], fontSize=6.8, leading=8)
+    head = ParagraphStyle("head", parent=cell, textColor=colors.white, fontName="Helvetica-Bold")
+
+    def para(text, style=cell):
+        return Paragraph(escape("" if text is None else str(text)), style)
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=landscape(A4), leftMargin=10 * mm, rightMargin=10 * mm, topMargin=10 * mm,
+                            bottomMargin=10 * mm, title=f"Consolidated student report - {report['batch']['code']}")
+    story = [Paragraph(f"Consolidated Student Report &ndash; {escape(report['batch']['code'])} {escape(report['batch']['name'])}", styles["Title"])]
+    pairs = [(k, v) for k, v in report["summary"] if k not in ("Batch code", "Batch name")]
+    half = -(-len(pairs) // 2)
+    left, right = pairs[:half], pairs[half:] + [("", "")] * (half - len(pairs[half:]))
+    summary = Table([[para(a), para(b), para(c), para(d)] for (a, b), (c, d) in zip(left, right)],
+                    colWidths=[38 * mm, 90 * mm, 38 * mm, 90 * mm])
+    summary.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.25, colors.lightgrey), ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#eef8fb")),
+                                 ("BACKGROUND", (2, 0), (2, -1), colors.HexColor("#eef8fb")), ("VALIGN", (0, 0), (-1, -1), "TOP")]))
+    story += [summary, Spacer(1, 6 * mm)]
+    keys = report["keys"]
+    short = {"registration_no": "Reg. no", "overall_score_pct": "Overall %", "final_signed_off": "Signed off", "progress": "Progress %"}
+    widths = {"student": 28, "registration_no": 18, "project": 48, "team": 16, "mentor": 26, "stage": 24, "progress": 13, "srs": 18,
+              "w1_pct": 11, "w2_pct": 11, "w3_pct": 11, "w4_pct": 11, "overall_score_pct": 13, "final_signed_off": 13, "delayed": 12}
+    data = [[para("#", head)] + [para(short.get(k, report["labels"].get(k, k)), head) for k in keys]]
+    for i, r in enumerate(report["rows"], 1):
+        data.append([para(i)] + [para(r.get(k) if r.get(k) is not None else "-") for k in keys])
+    table = Table(data, colWidths=[7 * mm] + [widths.get(k, 15) * mm for k in keys], repeatRows=1)
+    table.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), teal), ("GRID", (0, 0), (-1, -1), 0.25, colors.lightgrey),
+                               ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f3fafc")]),
+                               ("VALIGN", (0, 0), (-1, -1), "TOP"), ("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2)]))
+    story.append(table)
+    if not report["rows"]:
+        story.append(Paragraph("This batch has no students yet.", styles["Normal"]))
+
+    def footer(canvas, d):
+        canvas.setFont("Helvetica", 7)
+        canvas.setFillColor(colors.grey)
+        canvas.drawString(10 * mm, 5 * mm, f"Generated {report['generated_at']}")
+        canvas.drawRightString(landscape(A4)[0] - 10 * mm, 5 * mm, f"Page {d.page}")
+
+    doc.build(story, onFirstPage=footer, onLaterPages=footer)
+    return buf.getvalue()

@@ -40,7 +40,8 @@ def list_users():
 def create_user(data):
     if data["domain_id"] and not db.session.get(Domain, data["domain_id"]):
         raise AppError("Domain not found", 422, {"domain_id": "Domain not found"})
-    generated = data["password"] is None
+    reuses_admin = data["role"] in ("mentor", "domain_lead") and user_service.find_admin_by_email(data["email"]) is not None
+    generated = data["password"] is None and not reuses_admin
     password = data["password"] or user_service.generate_temp_password()
     user = user_service.create_staff_user(data["role"], data["name"], data["email"], password, data["phone"],
                                           data["domain_id"], data["designation"], data["expertise"],

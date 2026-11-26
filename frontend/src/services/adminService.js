@@ -164,6 +164,12 @@ export const proposalService = {
   projectTemplate: (format = 'xlsx') => downloadFile('/proposals/project-template', { format }, `project_template.${format}`),
   dataTemplate: () => downloadFile('/proposals/data-template', undefined, 'data-collection-template.xlsx'),
   downloadDataset: async (p, ds) => (ds.url ? openLink(ds.url) : downloadFile(`/proposals/${p.id}/datasets/${ds.id}/download`, undefined, ds.name)),
+  addDataset: (id, source, description) => {
+    const form = new FormData()
+    appendSource(form, source)
+    if (description) form.append('description', description)
+    return api.post(`/proposals/${id}/datasets`, form).then(d)
+  },
   review: (id, decision, remarks) => api.post(`/proposals/${id}/review`, { decision, remarks }).then(d),
   download: (p) => (p.file.url ? openLink(p.file.url) : downloadFile(`/proposals/${p.id}/download`, undefined, p.file.name)),
 }
@@ -270,6 +276,8 @@ export const reportService = {
   list: () => api.get('/reports').then(d),
   get: (type, params) => api.get(`/reports/${type}`, { params }).then((r) => ({ ...r.data.data, meta: r.data.meta })),
   download: (type, format, params) => downloadFile(`/reports/${type}`, { ...params, format }, `${type}.${format}`),
+  /** Consolidated student report for one batch: format 'xlsx' or 'pdf'. */
+  batchConsolidated: (batchId, format = 'xlsx') => downloadFile(`/reports/batch-consolidated/${batchId}`, { format }, `batch_${batchId}_consolidated_report.${format}`),
   /** Detailed single-batch report: format 'xlsx' (all sheets) or 'csv' with sheet students|weekly|criteria. */
   batchDetailed: (batchId, format = 'xlsx', sheet) => downloadFile(`/reports/batch-detailed/${batchId}`, { format, sheet }, `batch_${batchId}_detailed_report.${format}`),
 }

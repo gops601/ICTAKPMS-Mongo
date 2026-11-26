@@ -32,7 +32,7 @@ function Breadcrumbs() {
   const { pathname } = useLocation()
   const parts = pathname.split('/').filter(Boolean)
   return (
-    <nav aria-label="Breadcrumb" className="text-sm text-slate-500">
+    <nav aria-label="Breadcrumb" className="text-sm text-slate-600">
       {parts.map((p, i) => (
         <span key={i}>
           {i > 0 && <span className="mx-1">/</span>}
@@ -83,7 +83,7 @@ export default function AppLayout() {
         </div>
       )}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-slate-200/70 bg-white/85 px-4 backdrop-blur">
+        <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b-2 border-accent/70 bg-gradient-to-r from-rose-100 via-rose-50 to-amber-50 px-4 shadow-sm backdrop-blur">
           <div className="flex items-center gap-3">
             <button className="md:hidden" aria-label="Open menu" onClick={() => setOpen(!open)}>
               {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}

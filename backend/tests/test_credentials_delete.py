@@ -170,3 +170,25 @@ def test_batch_with_students_needs_the_explicit_option_and_removes_their_account
     assert r.status_code == 200
     db.session.expire_all()
     assert db.session.get(Batch, bid) is None and db.session.get(User, uid) is None
+
+
+def test_admin_email_can_also_be_added_as_mentor_and_lead(client, make_user, login):
+    from app.extensions import db
+    from app.models import Domain, DomainLead, Mentor, User
+    admin = make_user("admin")
+    H = login(admin.email)
+    dom = Domain(name="Reuse Domain", code="RUD", is_active=True)
+    db.session.add(dom)
+    db.session.commit()
+    base = {"name": "Same Person", "email": admin.email.upper(), "domain_id": dom.id}
+    r = client.post("/api/admin/users", headers=H, json={**base, "role": "mentor"})
+    assert r.status_code == 201, r.get_json()
+    assert "temporary_password" not in r.get_json()["data"]          # the admin keeps their own password
+    assert db.session.query(User).filter_by(email=admin.email).count() == 1
+    assert db.session.query(Mentor).filter_by(user_id=admin.id).count() == 1
+    assert client.post("/api/admin/users", headers=H, json={**base, "role": "mentor"}).status_code == 409
+    r = client.post("/api/admin/users", headers=H, json={**base, "role": "domain_lead", "domain_ids": [dom.id]})
+    assert r.status_code == 201, r.get_json()
+    assert db.session.query(DomainLead).filter_by(user_id=admin.id).count() == 1
+    assert db.session.query(Mentor).filter_by(user_id=admin.id).count() == 1   # no second mentor profile
+    assert client.post("/api/admin/users", headers=H, json={**base, "role": "domain_lead", "domain_ids": [dom.id]}).status_code == 409

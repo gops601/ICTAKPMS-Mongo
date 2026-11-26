@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Check, Download, ExternalLink, X } from 'lucide-react'
+import { Check, Database, Download, ExternalLink, X } from 'lucide-react'
 import { proposalService } from '../../services/adminService'
 import { errorMessage } from '../../services/api'
 import { useDebounced, useList } from '../../hooks/useList'
@@ -22,6 +22,10 @@ export default function ProposalApprovals() {
   const [remarks, setRemarks] = useState('')
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState('')
+  const [addFor, setAddFor] = useState(null) // proposal receiving a staff-added dataset
+  const [dsFile, setDsFile] = useState(null)
+  const [dsLink, setDsLink] = useState('')
+  const [dsNote, setDsNote] = useState('')
   const dq = useDebounced(q)
   const { items, meta, loading, error, reload } = useList(proposalService.list, { q: dq, status: status || undefined, page })
 
@@ -31,6 +35,14 @@ export default function ProposalApprovals() {
     try {
       await proposalService.review(decision.proposal.id, decision.kind, remarks || null)
       setDecision(null); reload()
+    } catch (e) { setActionError(errorMessage(e)) } finally { setBusy(false) }
+  }
+  const openAdd = (p) => { setAddFor(p); setDsFile(null); setDsLink(''); setDsNote(''); setActionError('') }
+  const submitDataset = async () => {
+    setBusy(true); setActionError('')
+    try {
+      await proposalService.addDataset(addFor.id, dsLink.trim() || dsFile, dsNote.trim() || null)
+      setAddFor(null); reload()
     } catch (e) { setActionError(errorMessage(e)) } finally { setBusy(false) }
   }
   const download = async (p) => { try { await proposalService.download(p) } catch (e) { setActionError(errorMessage(e, 'Download failed')) } }
@@ -48,7 +60,8 @@ export default function ProposalApprovals() {
         <Alert>{error || (!decision && actionError)}</Alert>
         <DataTable loading={loading} rows={items} empty="Nothing to review." columns={[
           { key: 'title', header: 'Proposal', render: (p) => <div><div className="font-medium">{p.title}</div>{p.summary && <div className="line-clamp-2 text-xs text-slate-500">{p.summary}</div>}{p.subdomain && <div className="text-xs text-slate-500">Subdomain: {p.subdomain.name}</div>}
-            {p.datasets.length > 0 && <ul className="mt-1 text-xs" aria-label={`Datasets of ${p.title}`}>{p.datasets.map((ds) => <li key={ds.id}><button className="text-brand underline" onClick={() => proposalService.downloadDataset(p, ds).catch((e) => setActionError(errorMessage(e, 'Download failed')))}>{ds.name}</button></li>)}</ul>}
+            {p.datasets.length > 0 && <ul className="mt-1 text-xs" aria-label={`Datasets of ${p.title}`}>{p.datasets.map((ds) => <li key={ds.id}><button className="text-brand underline" onClick={() => proposalService.downloadDataset(p, ds).catch((e) => setActionError(errorMessage(e, 'Download failed')))}>{ds.name}</button>{ds.added_by_staff && <span className="ml-1 text-slate-500">(added by staff)</span>}</li>)}</ul>}
+            {p.datasets.length === 0 && <div className="mt-1 text-xs text-amber-700">No dataset submitted by the student.</div>}
             {p.data_collection?.length > 0 && <details className="mt-1 text-xs"><summary className="cursor-pointer text-brand">Data collection ({p.data_collection.length} dataset(s))</summary><div className="mt-2"><DataCollectionTable rows={p.data_collection} title={`Data collection – ${p.title}`} /></div></details>}
             {p.shelf && <div className="text-xs font-medium text-green-700">On the Project Shelf as {p.shelf.ps_code}</div>}</div> },
           { key: 'student', header: 'Student', render: (p) => <div>{p.student.name}<div className="text-xs text-slate-500">{p.student.registration_no} · {p.student.batch.code}</div>
@@ -57,6 +70,7 @@ export default function ProposalApprovals() {
           { key: 'actions', header: 'Actions', render: (p) => (
             <div className="flex flex-wrap gap-2">
               <button className="btn-secondary" onClick={() => download(p)} aria-label={`${p.file.url ? 'Open' : 'Download'} ${p.file.name}`} title={p.file.url || undefined}>{p.file.url ? <ExternalLink className="h-4 w-4" /> : <Download className="h-4 w-4" />}</button>
+              {p.can_add_dataset && <button className="btn-secondary" onClick={() => openAdd(p)} title="Student did not submit a dataset"><Database className="h-4 w-4" />Add dataset</button>}
               {p.status === 'pending' && <>
                 <button className="btn-primary" onClick={() => open(p, 'approve')}><Check className="h-4 w-4" />Approve</button>
                 <button className="btn-secondary" onClick={() => open(p, 'reject')}><X className="h-4 w-4" />Reject</button>
@@ -66,6 +80,22 @@ export default function ProposalApprovals() {
         ]} />
         <Pagination meta={meta} onPage={setPage} />
       </div>
+      {addFor && (
+        <Modal title={`Add dataset to “${addFor.title}”`} onClose={() => setAddFor(null)}>
+          <Alert>{actionError}</Alert>
+          <p className="mb-3 text-sm text-slate-600">The student did not submit a dataset. Upload a file or paste a link; it is also added to the Project Shelf entry.</p>
+          <label htmlFor="ds-file" className="label">Dataset file</label>
+          <input id="ds-file" type="file" className="input" disabled={!!dsLink.trim()} onChange={(e) => setDsFile(e.target.files[0] || null)} />
+          <label htmlFor="ds-link" className="label mt-3">…or a link</label>
+          <input id="ds-link" className="input" placeholder="https://" value={dsLink} disabled={!!dsFile} onChange={(e) => setDsLink(e.target.value)} />
+          <label htmlFor="ds-note" className="label mt-3">Description (optional)</label>
+          <input id="ds-note" className="input" maxLength={255} value={dsNote} onChange={(e) => setDsNote(e.target.value)} />
+          <div className="mt-4 flex justify-end gap-2">
+            <button className="btn-secondary" onClick={() => setAddFor(null)}>Cancel</button>
+            <button className="btn-primary" disabled={busy || (!dsFile && !dsLink.trim())} onClick={submitDataset}>{busy ? 'Saving…' : 'Add dataset'}</button>
+          </div>
+        </Modal>
+      )}
       {decision && (
         <Modal title={`${decision.kind === 'approve' ? 'Approve' : 'Reject'} “${decision.proposal.title}”`} onClose={() => setDecision(null)}>
           <Alert>{actionError}</Alert>

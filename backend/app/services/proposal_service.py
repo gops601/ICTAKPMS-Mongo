@@ -218,6 +218,30 @@ def add_to_shelf(proposal, student, document, datasets, user):
     return ps
 
 
+def student_submitted_datasets(proposal):
+    """True when the student themselves attached datasets (or the data sheet) to the proposal."""
+    owner = proposal.student.user_id
+    return any(d.file.uploaded_by == owner for d in proposal.datasets)
+
+
+def add_dataset_by_staff(proposal, file_storage, url, description, user):
+    """A mentor / domain lead / admin supplies the dataset when the student did not submit one."""
+    if proposal.status not in ("pending", "approved"):
+        raise AppError(f"A {proposal.status} proposal cannot take a dataset", 409)
+    if student_submitted_datasets(proposal):
+        raise AppError("The student already submitted datasets for this project", 409)
+    if len(proposal.datasets) >= MAX_DATASETS:
+        raise AppError(f"At most {MAX_DATASETS} datasets per project", 422, {"datasets": "Too many files"})
+    attachment = file_service.save_source(file_storage, url, "dataset", user.id)
+    description = (description or "").strip()[:255] or f"Added by {user.name}"
+    db.session.add(ProposalDataset(proposal_id=proposal.id, file_id=attachment.id, description=description))
+    if proposal.problem_statement_id:               # keep the Project Shelf entry in step
+        db.session.add(ProblemStatementDataset(problem_statement_id=proposal.problem_statement_id, file_id=attachment.id,
+                                               description=description))
+    db.session.flush()
+    return attachment
+
+
 def review(proposal, decision, remarks, user):
     if decision not in DECISIONS:
         raise AppError("decision must be approve or reject", 422)

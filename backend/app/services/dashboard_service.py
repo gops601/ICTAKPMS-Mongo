@@ -44,23 +44,32 @@ def load_projects(user, filters=None):
 
 
 def mentors_by_project(projects):
-    """{project_id: [Mentor]} honouring per-project overrides, else the batch's active mentors."""
+    """{project_id: [Mentor]}: the project's own mentors (Project.mentor_id plus explicit ProjectMentor rows), else the
+    batch's active mentors. Mirrors project_service.mentors_for_project."""
     batch_ids = {p.batch_id for p in projects}
     batch_links = (db.session.query(BatchMentor)
                    .filter(BatchMentor.batch_id.in_(batch_ids), BatchMentor.is_active.is_(True)).all()) if batch_ids else []
     pids = [p.id for p in projects]
     project_links = (db.session.query(ProjectMentor).filter(ProjectMentor.project_id.in_(pids))
                      .order_by(ProjectMentor.id).all()) if pids else []
-    mentor_ids = {link.mentor_id for link in batch_links + project_links}
+    mentor_ids = {link.mentor_id for link in batch_links + project_links} | {p.mentor_id for p in projects if p.mentor_id}
     mentors = db.session.query(Mentor).filter(Mentor.id.in_(mentor_ids)).all() if mentor_ids else []
     db.session.prefetch(mentors, "user")
     by_id = {m.id: m for m in mentors}
     by_batch, explicit = defaultdict(list), defaultdict(list)
     for link in batch_links:
-        by_batch[link.batch_id].append(by_id[link.mentor_id])
+        if link.mentor_id in by_id:
+            by_batch[link.batch_id].append(by_id[link.mentor_id])
     for link in project_links:
-        explicit[link.project_id].append(by_id[link.mentor_id])
-    return {p.id: (explicit[p.id] if explicit[p.id] else (by_batch[p.batch_id] if not p.mentor_id else [])) for p in projects}
+        if link.mentor_id in by_id and by_id[link.mentor_id] not in explicit[link.project_id]:
+            explicit[link.project_id].append(by_id[link.mentor_id])
+    out = {}
+    for p in projects:
+        own = list(explicit[p.id])
+        if p.mentor_id and p.mentor_id in by_id and by_id[p.mentor_id] not in own:
+            own.insert(0, by_id[p.mentor_id])
+        out[p.id] = own if own else by_batch[p.batch_id]
+    return out
 
 
 def srs_status_of(stage):
