@@ -121,7 +121,7 @@ def test_student_can_upload_and_mentor_approves(client, world):
     r = propose(client, world)
     assert r.status_code == 201, r.get_json()
     pid = r.get_json()["data"]["id"]
-    assert client.get("/api/proposals/mine", headers=world["H"]["s1"]).get_json()["data"]["can_upload"] is False
+    assert client.get("/api/proposals/mine", headers=world["H"]["s1"]).get_json()["data"]["can_upload"] is True   # several projects are allowed
     # another student cannot see it; unrelated mentor cannot review; reviewing mentor can
     assert client.get("/api/proposals", headers=world["H"]["s2"]).get_json()["data"] == []
     assert client.post(f"/api/proposals/{pid}/review", headers=world["H"]["m2"], json={"decision": "approve"}).status_code == 404
@@ -140,12 +140,15 @@ def test_rejection_needs_remarks_and_allows_resubmission(client, world):
     assert propose(client, world, title="Better").status_code == 201
 
 
-def test_second_open_proposal_blocked(client, world):
-    assert propose(client, world).status_code == 201
-    assert propose(client, world, title="Again").status_code == 409
+def test_proposals_are_capped_per_student(client, world):
+    from app.services.proposal_service import MAX_PROJECTS_PER_STUDENT
+    for i in range(MAX_PROJECTS_PER_STUDENT):
+        assert propose(client, world, title=f"Idea {i}").status_code == 201
+    assert propose(client, world, title="One too many").status_code == 409
+    assert client.get("/api/proposals/mine", headers=world["H"]["s1"]).get_json()["data"]["can_upload"] is False
 
 
-def test_upload_blocked_once_project_allocated(client, world):
+def test_upload_allowed_once_project_allocated(client, world):
     s = world["studs"]["s1"]
     ps_ = ProblemStatement(ps_code="X", title="X", domain_id=domain("AIML").id, description="d")
     db.session.add(ps_)
@@ -156,8 +159,8 @@ def test_upload_blocked_once_project_allocated(client, world):
     db.session.add(ProjectStudent(project_id=p.id, student_id=s.id))
     db.session.commit()
     info = client.get("/api/proposals/mine", headers=world["H"]["s1"]).get_json()["data"]
-    assert info["can_upload"] is False and info["has_project"] is True
-    assert propose(client, world).status_code == 409
+    assert info["can_upload"] is True and info["has_project"] is True      # a student may run several projects
+    assert propose(client, world).status_code == 201
 
 
 def test_allocation_withdraws_pending_proposal(client, world):

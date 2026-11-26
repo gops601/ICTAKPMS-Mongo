@@ -67,8 +67,11 @@ def clean_project_type(batch, project_type):
     return project_type
 
 
-def allocate(batch, items, actor, mentor_id=None, start_date=None, project_type=None):
+def allocate(batch, items, actor, mentor_id=None, start_date=None, project_type=None, allow_existing=False):
     """Allocate problem statements to students/teams. All-or-nothing; returns the created projects.
+
+    allow_existing=True is used when a mentor approves a student's own proposal: a student may run several projects,
+    so holding one already is fine and their other pending proposals stay open.
 
     items: [{"problem_statement_id": int, "student_ids": [int], "team": bool}]
     A multi-student item becomes one team project when team=True, otherwise one project per student.
@@ -101,8 +104,15 @@ def allocate(batch, items, actor, mentor_id=None, start_date=None, project_type=
         if not s or s.batch_id != batch.id:
             problems.append(f"Student #{sid} is not in this batch")
     placed = db.select(ProjectStudent.student_id).where(ProjectStudent.student_id.in_(all_ids or [-1]))
-    taken = db.session.query(Student).filter(Student.id.in_(placed)).all()
-    problems += [f"{t.user.name} already has a project" for t in taken]
+    if allow_existing:      # several projects are fine, but never beyond the per-student cap
+        held = {}
+        for (sid,) in db.session.query(ProjectStudent.student_id).filter(ProjectStudent.student_id.in_(all_ids or [-1])).all():
+            held[sid] = held.get(sid, 0) + 1
+        problems += [f"{students[i].user.name} already has the maximum of {proposal_service.MAX_PROJECTS_PER_STUDENT} projects"
+                     for i in all_ids if i in students and held.get(i, 0) >= proposal_service.MAX_PROJECTS_PER_STUDENT]
+    else:
+        taken = db.session.query(Student).filter(Student.id.in_(placed)).all()
+        problems += [f"{t.user.name} already has a project" for t in taken]
     if problems:
         raise AppError("Allocation not possible: " + "; ".join(problems[:5]), 422, {"students": problems})
 
@@ -123,7 +133,8 @@ def allocate(batch, items, actor, mentor_id=None, start_date=None, project_type=
         planned += [(ps, [students[i] for i in group]) for group in groups]
 
     created = _create_projects(batch, planned, actor, mentor, start, end, project_type)
-    proposal_service.withdraw_pending(all_ids)
+    if not allow_existing:
+        proposal_service.withdraw_pending(all_ids)
     _notify_allocation(batch, created, planned, mentor)
     return created
 

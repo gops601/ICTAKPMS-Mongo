@@ -12,6 +12,24 @@ import SourceToggle from '../../components/SourceToggle'
 
 const TONE = { pending: 'orange', approved: 'green', rejected: 'red', withdrawn: 'grey' }
 
+/** Lets the student attach one more dataset link to a project they already submitted. */
+function AddDatasetLink({ proposal, onAdded, onError }) {
+  const [url, setUrl] = useState('')
+  const [busy, setBusy] = useState(false)
+  const add = async () => {
+    if (!url.trim()) return onError('Paste the dataset link first.')
+    setBusy(true); onError('')
+    try { await proposalService.addDataset(proposal.id, url.trim()); setUrl(''); await onAdded() }
+    catch (e) { onError(errorMessage(e)) } finally { setBusy(false) }
+  }
+  return (
+    <div className="mt-2 flex flex-wrap gap-2">
+      <input type="url" className="input !w-72" placeholder="Add a dataset link https://…" aria-label={`Dataset link for ${proposal.title}`} value={url} onChange={(e) => setUrl(e.target.value)} />
+      <button type="button" className="btn-secondary" onClick={add} disabled={busy}>{busy ? 'Adding…' : 'Add link'}</button>
+    </div>
+  )
+}
+
 /** Students propose their own detailed problem statement; a mentor must approve it. Locked once a project is allocated. */
 export default function MyProposal() {
   const fileRef = useRef(null)
@@ -72,7 +90,7 @@ export default function MyProposal() {
 
   return (
     <div className="max-w-3xl space-y-4">
-      <PageHeader title="My Project Proposal" subtitle="Add your project details and datasets. They go onto the Project Shelf straight away; once your mentor approves, your project starts and you can submit the SRS." />
+      <PageHeader title="My Project Proposal" subtitle="Add your project details and datasets. You can run more than one project: submit as many as the limit allows, and add dataset links later. They go onto the Project Shelf straight away; once your mentor approves, your project starts and you can submit the SRS." />
       <Alert>{error}</Alert>
       {done && <Alert type="success">Added to the Project Shelf. Your mentor has been notified; the SRS opens once they approve it.</Alert>}
       {locked && <Alert type={info.has_project ? 'warning' : 'info'}>{info.blocked_reason}</Alert>}
@@ -109,7 +127,7 @@ export default function MyProposal() {
                       <TeamPicker students={mates.students} members={team} onChange={setTeam} max={mates.max_group_size - 1} idPrefix="pp" />
                       {errs.members && <p className="mt-1 text-xs text-red-600">{Array.isArray(errs.members) ? errs.members.join('; ') : errs.members}</p>}
                     </div>
-                    <p className="text-xs text-slate-500">Only students without a project of their own are listed. Once submitted, the group can only be changed by your mentor or Domain Lead.</p>
+                    <p className="text-xs text-slate-500">Once submitted, the group can only be changed by your mentor or Domain Lead.</p>
                   </>
                 )}
               </div>
@@ -176,6 +194,14 @@ export default function MyProposal() {
                 {p.data_collection?.length > 0 && <div className="mt-1 text-xs text-slate-600">Data collection: {p.data_collection.map((r) => r.name).join(', ')}</div>}
                 {p.shelf && <div className="mt-1 text-xs font-medium text-green-700">On the Project Shelf as {p.shelf.ps_code}</div>}
                 {p.remarks && <div className="mt-1 text-slate-700"><span className="font-medium">Mentor remarks:</span> {p.remarks}</div>}
+                {p.datasets.length > 0 && (
+                  <ul className="mt-1 space-y-0.5 text-xs" aria-label={`Datasets of ${p.title}`}>
+                    {p.datasets.map((ds) => (
+                      <li key={ds.id}><button type="button" className="text-brand underline" onClick={() => proposalService.downloadDataset(p, ds).catch((e) => setError(errorMessage(e, 'Download failed')))}>{ds.name}</button>{ds.url ? ' (link)' : ''}</li>
+                    ))}
+                  </ul>
+                )}
+                {p.can_add_link && <AddDatasetLink proposal={p} onAdded={load} onError={setError} />}
               </div>
               <button className="btn-secondary shrink-0" onClick={() => download(p)} aria-label={`${p.file.url ? 'Open' : 'Download'} ${p.file.name}`}>{p.file.url ? <ExternalLink className="h-4 w-4" /> : <Download className="h-4 w-4" />}</button>
             </li>

@@ -80,12 +80,12 @@ def test_group_proposal_roles_shelf_and_notifications(client, world):
     d = r.get_json()["data"]
     assert d["is_group"] and len(d["members"]) == 3
     assert d["members"][0]["role"] == "Team Lead" and d["members"][1]["role"] == "Backend"
-    # the picked classmates are told, and cannot start or join anything else meanwhile
+    # picked classmates stay free to propose their own projects too (a student may run several)
     info = client.get("/api/proposals/mine", headers=world["H"]["s2"]).get_json()["data"]
-    assert info["can_upload"] is False and "added you to the group project" in info["blocked_reason"]
-    assert propose(client, world, who="s2", title="Mine too").status_code == 409
+    assert info["can_upload"] is True
+    assert propose(client, world, who="s2", title="Mine too").status_code == 201
     free = {s["registration_no"] for s in client.get("/api/proposals/classmates", headers=world["H"]["s4"]).get_json()["data"]["students"]}
-    assert free == set()                                                                           # S1-S3 are tied up in the group
+    assert len(free) == 3                                                                          # classmates stay selectable
     # the group is visible to the mentor on the shelf entry
     ps_id = d["shelf"]["id"]
     shelf = client.get(f"/api/problem-statements/{ps_id}", headers=world["H"]["m1"]).get_json()["data"]
@@ -182,3 +182,41 @@ def test_group_change_rules_and_scrum_cleanup(client, world, team):
 def test_scrum_board_shows_member_roles(client, world, team):
     d = client.get(f"/api/scrum/projects/{team.id}/board", headers=world["H"]["s1"]).get_json()["data"]
     assert {(m["student_id"], m["role"], m["is_lead"]) for m in d["members"]} == {(sid(world, "s1"), "Team Lead", True), (sid(world, "s2"), "Backend", False)}
+
+
+# ------------------------------------------------------------ several projects per student + dataset links added later
+def test_student_can_add_a_dataset_link_after_submitting(client, world):
+    d = propose(client, world).get_json()["data"]
+    assert d["can_add_link"] is True and d["datasets"] == []
+    r = client.post(f"/api/proposals/{d['id']}/datasets", headers=world["H"]["s1"], data={"url": "https://www.kaggle.com/datasets/x/y"})
+    assert r.status_code == 201, r.get_json()
+    ds = r.get_json()["data"]["datasets"]
+    assert len(ds) == 1 and ds[0]["url"] == "https://www.kaggle.com/datasets/x/y"
+    shelf = client.get(f"/api/problem-statements/{d['shelf']['id']}", headers=world["H"]["m1"]).get_json()["data"]
+    assert any(x.get("url") for x in shelf["datasets"])                                            # reaches the Project Shelf
+    assert client.post(f"/api/proposals/{d['id']}/datasets", headers=world["H"]["s1"], data={"url": "ftp://bad"}).status_code == 422
+    assert client.post(f"/api/proposals/{d['id']}/datasets", headers=world["H"]["s1"], data={}).status_code == 422
+    # another student cannot touch it
+    assert client.post(f"/api/proposals/{d['id']}/datasets", headers=world["H"]["s2"], data={"url": "https://a.io/d"}).status_code == 404
+
+
+def test_student_can_run_several_projects(client, world):
+    first = propose(client, world, title="One").get_json()["data"]
+    assert propose(client, world, title="Two").status_code == 201                                  # a second while the first is pending
+    client.post(f"/api/proposals/shelf/{first['shelf']['id']}/review", headers=world["H"]["m1"], json={"decision": "approve"})
+    assert propose(client, world, title="Three").status_code == 201                                # and another after one is approved
+    second = db.session.query(StudentProposal).filter_by(title="Two").one()
+    r = client.post(f"/api/proposals/{second.id}/review", headers=world["H"]["m1"], json={"decision": "approve"})
+    assert r.status_code == 200, r.get_json()
+    assert db.session.query(Project).count() == 2                                                  # approving "Two" did not withdraw "Three"
+    assert db.session.query(StudentProposal).filter_by(title="Three").one().status == "pending"
+    mine = client.get("/api/projects", headers=world["H"]["s1"]).get_json()["data"]
+    assert len(mine["items"] if isinstance(mine, dict) else mine) == 2
+
+
+def test_open_project_limit(client, world):
+    from app.services.proposal_service import MAX_PROJECTS_PER_STUDENT
+    for i in range(MAX_PROJECTS_PER_STUDENT):
+        assert propose(client, world, title=f"P{i}").status_code == 201
+    assert propose(client, world, title="One too many").status_code == 409
+    assert client.get("/api/proposals/mine", headers=world["H"]["s1"]).get_json()["data"]["can_upload"] is False

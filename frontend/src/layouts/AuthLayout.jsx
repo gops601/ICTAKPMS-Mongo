@@ -2,7 +2,7 @@ import { CheckCircle2, ShieldCheck } from 'lucide-react'
 import { LogoMark, ProjectWorkflowHero } from '../components/illustrations'
 import { APP_NAME, APP_TAGLINE } from '../utils/brand'
 
-const FEATURES = ['SRS submission, review and approval', 'Scrum boards with weekly mentor evaluations', 'Live dashboards and batch-wise reports']
+const FEATURES = ['Project specifications submission, review and approval', 'Scrum boards with mentor evaluations', 'Live dashboards and batch-wise reports']
 
 /** Two-panel sign-in shell. Set VITE_HERO_IMAGE to show your own photo/AI artwork instead of the built-in illustration. */
 export default function AuthLayout({ title, subtitle, children }) {

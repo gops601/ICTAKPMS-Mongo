@@ -16,6 +16,7 @@ from app.utils.errors import AppError
 
 DECISIONS = {"approve": "approved", "reject": "rejected"}
 MAX_DATASETS = 10
+MAX_PROJECTS_PER_STUDENT = 5     # projects plus pending proposals a student may have at the same time
 MAX_GROUP_SIZE = 6
 MAX_ROLE_LEN = 60
 LEAD_ROLE = "Team Lead"
@@ -25,25 +26,10 @@ def has_project(student):
     return db.session.query(ProjectStudent.id).filter_by(student_id=student.id).first() is not None
 
 
-def pending_group_of(student):
-    """The pending group proposal (by someone else) that lists this student as a member, if any."""
-    mates = db.select(Student.id).where(Student.batch_id == student.batch_id, Student.id != student.id)
-    rows = (db.session.query(StudentProposal)
-            .filter(StudentProposal.is_group.is_(True), StudentProposal.status == "pending",
-                    StudentProposal.student_id.in_(mates)).all())
-    return next((p for p in rows if any(m.get("student_id") == student.id for m in (p.group_members or []))), None)
-
-
 def member_block_reason(student):
     """Why this student cannot be put into a group right now (None = free)."""
-    name = student.user.name
-    if has_project(student):
-        return f"{name} already has a project"
-    if db.session.query(StudentProposal.id).filter(StudentProposal.student_id == student.id,
-                                                   StudentProposal.status == "pending").first():
-        return f"{name} has already proposed a project of their own"
-    if pending_group_of(student):
-        return f"{name} is already in another group proposal"
+    if open_project_count(student) >= MAX_PROJECTS_PER_STUDENT:
+        return f"{student.user.name} already has the maximum of {MAX_PROJECTS_PER_STUDENT} projects"
     return None
 
 
@@ -68,16 +54,30 @@ def free_classmates(student):
     return db.session.prefetch([m for m in mates if m.id not in busy], "user")
 
 
+def _pending_group_counts(batch_id):
+    """{student_id: n} for pending group proposals that list the student (the submitter is counted separately)."""
+    rows = (db.session.query(StudentProposal)
+            .filter(StudentProposal.is_group.is_(True), StudentProposal.status == "pending",
+                    StudentProposal.student_id.in_(db.select(Student.id).where(Student.batch_id == batch_id))).all())
+    counts = {}
+    for p in rows:
+        for m in p.group_members or []:
+            if m.get("student_id") != p.student_id:
+                counts[m["student_id"]] = counts.get(m["student_id"], 0) + 1
+    return counts
+
+
 def _busy_students(batch_id, ids):
-    """The ids that member_block_reason() would reject, found with three queries instead of three per student."""
-    busy = db.session.query(ProjectStudent.student_id).filter(ProjectStudent.student_id.in_(ids)).value_set()
-    busy |= db.session.query(StudentProposal.student_id).filter(
-        StudentProposal.student_id.in_(ids), StudentProposal.status == "pending").value_set()
-    classmates = db.select(Student.id).where(Student.batch_id == batch_id)
-    for p in db.session.query(StudentProposal).filter(StudentProposal.is_group.is_(True), StudentProposal.status == "pending",
-                                                      StudentProposal.student_id.in_(classmates)):
-        busy |= {m.get("student_id") for m in (p.group_members or [])}
-    return busy
+    """The ids that member_block_reason() would reject, found with a few queries instead of several per student."""
+    counts = {}
+    for (sid,) in db.session.query(ProjectStudent.student_id).filter(ProjectStudent.student_id.in_(ids)).all():
+        counts[sid] = counts.get(sid, 0) + 1
+    for (sid,) in db.session.query(StudentProposal.student_id).filter(
+            StudentProposal.student_id.in_(ids), StudentProposal.status == "pending").all():
+        counts[sid] = counts.get(sid, 0) + 1
+    for sid, n in _pending_group_counts(batch_id).items():
+        counts[sid] = counts.get(sid, 0) + n
+    return {sid for sid in ids if counts.get(sid, 0) >= MAX_PROJECTS_PER_STUDENT}
 
 
 def clean_group(student, mode, members):
@@ -111,19 +111,21 @@ def clean_group(student, mode, members):
     return True, [{"student_id": student.id, "role": mine}] + [{"student_id": sid, "role": r} for sid, r in roles.items()]
 
 
+def open_project_count(student):
+    """Projects the student is on (including those from approved proposals) plus their pending proposals, own or group."""
+    running = db.session.query(ProjectStudent.id).filter_by(student_id=student.id).count()
+    pending = db.session.query(StudentProposal.id).filter(StudentProposal.student_id == student.id,
+                                                          StudentProposal.status == "pending").count()
+    return running + pending + _pending_group_counts(student.batch_id).get(student.id, 0)
+
+
 def upload_block_reason(student):
-    """Why the student cannot upload right now (None = allowed). Drives the disabled state in the UI."""
-    if has_project(student):
-        return "A project has already been allocated to you, so you can no longer upload your own project."
-    grp = pending_group_of(student)
-    if grp:
-        return (f"{grp.student.user.name} added you to the group project “{grp.title}”, which is awaiting mentor approval. "
-                "The SRS opens for the whole group once it is approved.")
-    open_ = (db.session.query(StudentProposal).filter(StudentProposal.student_id == student.id,
-                                                      StudentProposal.status.in_(("pending", "approved"))).first())
-    if open_:
-        return ("Your project is on the Project Shelf and awaiting mentor approval. The SRS opens once it is approved."
-                if open_.status == "pending" else "Your project has already been approved.")
+    """Why the student cannot submit another project right now (None = allowed). Drives the disabled state in the UI.
+
+    A student may run several projects; the only limit is MAX_PROJECTS_PER_STUDENT projects/proposals at once."""
+    if open_project_count(student) >= MAX_PROJECTS_PER_STUDENT:
+        return (f"You already have {MAX_PROJECTS_PER_STUDENT} projects or pending proposals, which is the maximum. "
+                "Ask your mentor to reject or close one before adding another.")
     return None
 
 
@@ -242,6 +244,24 @@ def add_dataset_by_staff(proposal, file_storage, url, description, user):
     return attachment
 
 
+def add_link_by_student(proposal, url, description, user):
+    """The submitting student adds a dataset link to their own proposal after submitting it."""
+    if proposal.status not in ("pending", "approved"):
+        raise AppError(f"A {proposal.status} proposal cannot take a dataset", 409)
+    if not (url or "").strip():
+        raise AppError("Paste the dataset link", 422, {"url": "A link is required"})
+    if len(proposal.datasets) >= MAX_DATASETS:
+        raise AppError(f"At most {MAX_DATASETS} datasets per project", 422, {"datasets": "Too many files"})
+    attachment = file_service.save_link(file_service.clean_url(url, "url"), "dataset", user.id, "url")
+    description = (description or "").strip()[:255] or None
+    db.session.add(ProposalDataset(proposal_id=proposal.id, file_id=attachment.id, description=description))
+    if proposal.problem_statement_id:               # keep the Project Shelf entry in step
+        db.session.add(ProblemStatementDataset(problem_statement_id=proposal.problem_statement_id, file_id=attachment.id,
+                                               description=description))
+    db.session.flush()
+    return attachment
+
+
 def review(proposal, decision, remarks, user):
     if decision not in DECISIONS:
         raise AppError("decision must be approve or reject", 422)
@@ -282,7 +302,7 @@ def _start_project(proposal, ps, mentor_user):
     ids = [m["student_id"] for m in proposal.group_members] if proposal.is_group and proposal.group_members else [student.id]
     projects = project_service.allocate(
         student.batch, [{"problem_statement_id": ps.id, "student_ids": ids, "team": len(ids) > 1}], mentor_user,
-        mentor_id=mentor.id if mentor else None, project_type="other")   # Academic OU: a student's own idea is "Other"
+        mentor_id=mentor.id if mentor else None, project_type="other", allow_existing=True)   # Academic OU: a student's own idea is "Other"
     project = projects[0]
     if len(ids) > 1:                                  # the roles the group chose, the submitter is the team lead
         roles = {m["student_id"]: m.get("role") or None for m in proposal.group_members}
