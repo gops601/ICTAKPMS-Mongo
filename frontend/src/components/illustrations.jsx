@@ -190,14 +190,14 @@ export function ProjectWorkflowHero({ className = '' }) {
   const steps = [
     ['Project Shelf', 'Choose a project'],
     ['Allocation', 'Mentor & team'],
-    ['SRS', 'Submit & approve'],
+    ['Project Specifications', 'Submit & approve'],
     ['Scrum Build', 'Sprint board'],
-    ['Weekly Reviews', 'Mentor scoring'],
+    ['Evaluations', 'Mentor scoring'],
     ['Completed', 'Sign-off & close'],
   ]
   const pos = steps.map((_, i) => [i % 2 === 0 ? 30 : 290, 20 + i * 64])
   return (
-    <svg viewBox="0 0 520 450" overflow="visible" className={className} role="img" aria-label="Illustration of the complete project workflow: project shelf, allocation, SRS, Scrum build, weekly reviews and completion">
+    <svg viewBox="0 0 520 450" overflow="visible" className={className} role="img" aria-label="Illustration of the complete project workflow: project shelf, allocation, project specifications, Scrum build, evaluations and completion">
       <defs>
         <linearGradient id="pw-node" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#0a819f" /><stop offset="1" stopColor="#d97706" /></linearGradient>
         <linearGradient id="pw-fade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#fff" stopOpacity=".55" /><stop offset="1" stopColor="#fff" stopOpacity="0" /></linearGradient>

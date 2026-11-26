@@ -343,7 +343,6 @@ def test_staff_can_add_a_dataset_when_the_student_submitted_none(client, world):
     pid = upload(client, world, datasets=0).get_json()["data"]["id"]
     p = client.get("/api/proposals", headers=H["m1"]).get_json()["data"][0]
     assert p["can_add_dataset"] is True
-    assert client.post(f"/api/proposals/{pid}/datasets", headers=H["s1"], data={"url": "https://x.org/d"}).status_code == 403
     r = client.post(f"/api/proposals/{pid}/datasets", headers=H["m1"], data={"url": "https://x.org/d.csv", "description": "Raw data"})
     assert r.status_code == 201, r.get_json()
     ds = r.get_json()["data"]["datasets"]
@@ -353,6 +352,13 @@ def test_staff_can_add_a_dataset_when_the_student_submitted_none(client, world):
     assert r.status_code == 201, r.get_json()
     ps = db.session.query(ProblemStatement).one()
     assert len(ps.datasets) == 2                                    # mirrored onto the shelf entry
+
+
+def test_student_can_add_a_dataset_link_to_their_own_proposal(client, world):
+    pid = upload(client, world, datasets=0).get_json()["data"]["id"]
+    r = client.post(f"/api/proposals/{pid}/datasets", headers=world["H"]["s1"], data={"url": "https://x.org/d"})
+    assert r.status_code == 201, r.get_json()
+    assert client.post(f"/api/proposals/{pid}/datasets", headers=world["H"]["m1"], data={"url": "https://x.org/e"}).status_code == 409
 
 
 def test_staff_cannot_add_a_dataset_when_the_student_already_submitted_one(client, world):

@@ -32,6 +32,8 @@ def proposal_to_dict(p):
             "datasets": [{"id": d.id, "name": d.file.original_name, "size_bytes": d.file.size_bytes, "url": d.file.external_url,
                           "added_by_staff": d.file.uploaded_by != s.user_id} for d in p.datasets],
             "can_add_dataset": p.status in ("pending", "approved") and not proposal_service.student_submitted_datasets(p),
+            "can_add_link": (current_user().role_name == "student" and p.status in ("pending", "approved")
+                             and len(p.datasets) < proposal_service.MAX_DATASETS),
             "subdomain": {"id": p.subdomain.id, "name": p.subdomain.name} if p.subdomain else None,
             "shelf": {"id": p.problem_statement.id, "ps_code": p.problem_statement.ps_code} if p.problem_statement else None,
             "is_group": p.is_group, "members": proposal_service.members_view(p),
@@ -200,13 +202,17 @@ def review_from_shelf(data, ps_id):
 
 @bp.post("/<int:proposal_id>/datasets")
 @bp.doc(security=SEC, description="multipart/form-data: file or url (a link), description (optional). Lets the batch's mentors, the domain "
-                                  "lead and admins add a dataset when the student did not submit one.")
-@roles_required("mentor", "domain_lead", "admin")
+                                  "lead and admins add a dataset when the student did not submit one. A student can add a dataset "
+                                  "link (`url`) to their own proposal at any time while it is pending or approved.")
+@roles_required("student", "mentor", "domain_lead", "admin")
 def add_proposal_dataset(proposal_id):
     user = current_user()
     p = _get(user, proposal_id)
-    proposal_service.add_dataset_by_staff(p, request.files.get("file"), request.form.get("url"),
-                                          request.form.get("description"), user)
+    if user.role_name == "student":
+        proposal_service.add_link_by_student(p, request.form.get("url"), request.form.get("description"), user)
+    else:
+        proposal_service.add_dataset_by_staff(p, request.files.get("file"), request.form.get("url"),
+                                              request.form.get("description"), user)
     audit(user.id, "proposal.dataset_add", "student_proposal", p.id)
     db.session.commit()
     return ok(proposal_to_dict(p), "Dataset added", 201)

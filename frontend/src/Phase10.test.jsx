@@ -258,7 +258,7 @@ describe('branding and illustrations', () => {
     render(<AuthLayout title="Sign in"><p>form</p></AuthLayout>)
     expect(screen.getByRole('img', { name: /illustration of the complete project workflow/i })).toBeInTheDocument()
     expect(screen.getAllByRole('img', { name: 'ICTAK logo' }).length).toBeGreaterThan(0)
-    expect(screen.getByText(/srs submission, review and approval/i)).toBeInTheDocument()
+    expect(screen.getByText(/project specifications submission, review and approval/i)).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Sign in' })).toBeInTheDocument()
   })
 
