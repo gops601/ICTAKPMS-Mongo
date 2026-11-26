@@ -40,6 +40,8 @@ class Domain(TimestampMixin, db.Model):
     code = db.Column(db.String(30), unique=True, nullable=False)
     description = db.Column(db.Text)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
+    # Evaluation rubric track (see services/rubric_data.TRACKS); empty = recognised from the name / code
+    rubric_track = db.Column(db.String(20))
 
     leads = db.relationship("DomainLead", back_populates="domain", cascade="all, delete-orphan")
     batches = db.relationship("Batch", back_populates="domain")

@@ -8,9 +8,10 @@ import Modal from '../../components/Modal'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import StatusBadge from '../../components/StatusBadge'
 import Alert from '../../components/Alert'
+import { RUBRIC_TRACKS } from '../../utils/rubrics'
 
 function DomainFormModal({ domain, onClose, onSaved }) {
-  const [form, setForm] = useState({ name: domain?.name || '', code: domain?.code || '', description: domain?.description || '' })
+  const [form, setForm] = useState({ name: domain?.name || '', code: domain?.code || '', description: domain?.description || '', rubric_track: domain?.rubric_track || '' })
   const [error, setError] = useState('')
   const [errs, setErrs] = useState({})
   const [busy, setBusy] = useState(false)
@@ -18,9 +19,10 @@ function DomainFormModal({ domain, onClose, onSaved }) {
 
   const submit = async (e) => {
     e.preventDefault(); setBusy(true); setError(''); setErrs({})
+    const rubric_track = form.rubric_track || null
     try {
-      if (domain) await domainService.update(domain.id, { name: form.name, description: form.description })
-      else await domainService.create(form)
+      if (domain) await domainService.update(domain.id, { name: form.name, description: form.description, rubric_track })
+      else await domainService.create({ ...form, rubric_track })
       onSaved()
     } catch (err) { setError(errorMessage(err)); setErrs(fieldErrors(err)) } finally { setBusy(false) }
   }
@@ -42,6 +44,14 @@ function DomainFormModal({ domain, onClose, onSaved }) {
         <div>
           <label htmlFor="d-desc" className="label">Description</label>
           <textarea id="d-desc" className="input" rows={3} value={form.description} onChange={set('description')} />
+        </div>
+        <div>
+          <label htmlFor="d-rubric" className="label">Evaluation rubric</label>
+          <select id="d-rubric" className="input" value={form.rubric_track} onChange={set('rubric_track')}>
+            <option value="">Detect from name / code</option>
+            {Object.entries(RUBRIC_TRACKS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+          </select>
+          {errs.rubric_track && <p className="mt-1 text-xs text-red-600">{errs.rubric_track}</p>}
         </div>
         <div className="flex justify-end gap-2">
           <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
@@ -190,6 +200,7 @@ export default function DomainManagement() {
           { key: 'code', header: 'Code' },
           { key: 'leads', header: 'Domain leads', render: (d) => d.leads.length ? d.leads.map((l) => l.name).join(', ') : <span className="text-slate-400">Unassigned</span> },
           { key: 'subdomains', header: 'Subdomains', render: (d) => (d.subdomains || []).filter((s) => s.is_active).length ? (d.subdomains).filter((s) => s.is_active).map((s) => s.name).join(', ') : <span className="text-slate-400">None</span> },
+          { key: 'rubric', header: 'Rubric', render: (d) => RUBRIC_TRACKS[d.effective_rubric_track] || <span className="text-slate-400">Common only</span> },
           { key: 'batch_count', header: 'Batches' },
           { key: 'student_count', header: 'Students' },
           { key: 'status', header: 'Status', render: (d) => <StatusBadge status={d.is_active ? 'active' : 'inactive'} /> },

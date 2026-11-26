@@ -1,5 +1,8 @@
 from marshmallow import EXCLUDE, Schema, fields, validate
 
+from app.services.rubric_data import TRACKS
+from app.services.rubric_service import domain_track
+
 
 class _Base(Schema):
     class Meta:
@@ -40,11 +43,13 @@ class DomainSchema(_Base):
     name = fields.String(required=True, validate=validate.Length(min=2, max=120))
     code = fields.String(required=True, validate=validate.Regexp(r"^[A-Za-z0-9_-]{2,30}$"))
     description = fields.String(load_default=None)
+    rubric_track = fields.String(load_default=None, allow_none=True, validate=validate.OneOf(list(TRACKS)))
 
 
 class DomainUpdateSchema(_Base):
     name = fields.String(validate=validate.Length(min=2, max=120))
     description = fields.String(allow_none=True)
+    rubric_track = fields.String(allow_none=True, validate=validate.OneOf(list(TRACKS)))
 
 
 class SubdomainSchema(_Base):
@@ -175,6 +180,7 @@ def subdomain_to_dict(s):
 
 def domain_to_dict(d, counts=None):
     out = {"id": d.id, "name": d.name, "code": d.code, "description": d.description, "is_active": d.is_active,
+           "rubric_track": d.rubric_track, "effective_rubric_track": domain_track(d),
            "leads": [{"id": l.user.id, "name": l.user.name, "email": l.user.email} for l in d.leads],
            "subdomains": [subdomain_to_dict(s) for s in d.subdomains]}
     if counts:

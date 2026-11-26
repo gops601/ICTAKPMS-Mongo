@@ -120,12 +120,13 @@ def update_field(field, data):
 
 
 # ------------------------------------------------------------------------- Domain
-def create_domain(name, code, description=None):
+def create_domain(name, code, description=None, rubric_track=None):
     if _ci_exists(Domain, Domain.name, name):
         raise AppError("A domain with this name already exists", 409)
     if _ci_exists(Domain, Domain.code, code):
         raise AppError("A domain with this code already exists", 409)
-    d = Domain(name=name.strip(), code=code.strip().upper(), description=description)
+    d = Domain(name=name.strip(), code=code.strip().upper(), description=description,
+               rubric_track=rubric_track)
     db.session.add(d)
     db.session.flush()
     return d
