@@ -27,6 +27,10 @@ export const domainService = {
   updateSubdomain: (subId, body) => api.patch(`/domains/subdomains/${subId}`, body).then(d),
 }
 
+export const rubricService = {
+  get: () => api.get('/rubrics').then(d),
+}
+
 export const batchService = {
   list: (params) => api.get('/batches', { params }).then(withMeta),
   get: (id) => api.get(`/batches/${id}`).then(d),

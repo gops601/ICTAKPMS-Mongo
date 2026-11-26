@@ -54,7 +54,7 @@ def list_domains():
 @bp.arguments(DomainSchema)
 @roles_required("admin")
 def create_domain(data):
-    d = org_service.create_domain(data["name"], data["code"], data["description"])
+    d = org_service.create_domain(data["name"], data["code"], data["description"], data["rubric_track"])
     audit(current_user().id, "domain.create", "domain", d.id)
     db.session.commit()
     return ok(domain_to_dict(d), "Domain created", 201)
@@ -76,6 +76,8 @@ def get_domain(domain_id):
 @roles_required("admin")
 def update_domain(data, domain_id):
     d = org_service.update_domain(org_service.get_domain(domain_id), data.get("name"), data.get("description"))
+    if "rubric_track" in data:  # null switches back to recognising the track from the name / code
+        d.rubric_track = data["rubric_track"]
     audit(current_user().id, "domain.update", "domain", d.id)
     db.session.commit()
     return ok(domain_to_dict(d))

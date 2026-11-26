@@ -1,6 +1,6 @@
 import {
   Bell, Briefcase, Building2, ClipboardCheck, FileCheck, FilePlus, FileSpreadsheet, FileText, FileUp, FolderKanban, Github, KanbanSquare, ListChecks, Star, BarChart3, CalendarClock, GraduationCap, KeyRound, Layers,
-  LayoutDashboard, Network, Plug, Upload, UserCheck, UserCircle, UserCog, Users,
+  LayoutDashboard, Network, Scale, Plug, Upload, UserCheck, UserCircle, UserCog, Users,
 } from 'lucide-react'
 
 export const ROLE_HOME = {
@@ -35,6 +35,7 @@ export const ROLE_MENU = {
     { to: '/admin/srs', label: 'SRS Queue', icon: ClipboardCheck },
     { to: '/admin/scrum', label: 'Scrum Monitoring', icon: KanbanSquare },
     { to: '/admin/evaluations', label: 'Evaluations', icon: ListChecks },
+    { to: '/admin/rubrics', label: 'Evaluation Rubrics', icon: Scale },
     { to: '/admin/date-requests', label: 'Date Approvals', icon: CalendarClock },
     { to: '/admin/reports', label: 'Reports', icon: BarChart3 },
     { to: '/admin/uploads', label: 'Bulk Upload', icon: FileSpreadsheet },
@@ -49,6 +50,7 @@ export const ROLE_MENU = {
     { to: '/lead/srs', label: 'SRS Status', icon: ClipboardCheck },
     { to: '/lead/scrum', label: 'Scrum Monitoring', icon: KanbanSquare },
     { to: '/lead/evaluations', label: 'Review Monitoring', icon: ListChecks },
+    { to: '/lead/rubrics', label: 'Evaluation Rubric', icon: Scale },
     { to: '/lead/date-requests', label: 'Date Approvals', icon: CalendarClock },
     { to: '/lead/reports', label: 'Reports', icon: BarChart3 },
     { to: '/lead/project-shelf', label: 'Project Shelf', icon: FileText, end: true },
@@ -63,6 +65,7 @@ export const ROLE_MENU = {
     { to: '/mentor/srs', label: 'SRS Review', icon: ClipboardCheck },
     { to: '/mentor/scrum', label: 'Scrum Monitoring', icon: KanbanSquare },
     { to: '/mentor/evaluations', label: 'Weekly Evaluations', icon: ListChecks },
+    { to: '/mentor/rubrics', label: 'Evaluation Rubric', icon: Scale },
     { to: '/mentor/date-requests', label: 'Date Requests', icon: CalendarClock },
     { to: '/mentor/templates', label: 'Evaluation Templates', icon: Star },
     { to: '/mentor/reports', label: 'Project Reports', icon: BarChart3 },
@@ -75,6 +78,7 @@ export const ROLE_MENU = {
     { to: '/student/github', label: 'GitHub Repository', icon: Github },
     { to: '/student/scrum', label: 'Scrum Board', icon: KanbanSquare },
     { to: '/student/reviews', label: 'Weekly Reviews', icon: ListChecks },
+    { to: '/student/rubrics', label: 'Evaluation Rubric', icon: Scale },
   ],
 }
 

@@ -43,6 +43,7 @@ import ProposalApprovals from './pages/mentor/ProposalApprovals'
 import { SrsProjectPage, SrsQueuePage, StudentGithubPage, StudentSrsPage } from './pages/common/SrsPages'
 import { ScrumOverviewPage, ScrumProjectPage, StudentScrumPage } from './pages/common/ScrumPages'
 import { EvaluationQueuePage, ProjectReviewsPage, ReviewPage, StudentReviewsPage, TemplatesPage } from './pages/common/ReviewPages'
+import RubricsPage from './pages/common/RubricsPage'
 import { ROLE_HOME } from './utils/roles'
 
 /** Project Shelf pages are shared by admins and domain leads (access is enforced by the API). */
@@ -103,6 +104,7 @@ export default function App() {
             <Route path="/admin/srs" element={<SrsQueuePage />} />
             <Route path="/admin/scrum" element={<ScrumOverviewPage />} />
             <Route path="/admin/evaluations" element={<EvaluationQueuePage />} />
+            <Route path="/admin/rubrics" element={<RubricsPage />} />
             <Route path="/admin/date-requests" element={<DateRequestsPage />} />
             <Route path="/admin/projects" element={<ProjectList title="All Projects" subtitle="Every project across OUs and domains." />} />
             {psRoutes('/admin')}
@@ -116,6 +118,7 @@ export default function App() {
             <Route path="/lead/srs" element={<SrsQueuePage />} />
             <Route path="/lead/scrum" element={<ScrumOverviewPage />} />
             <Route path="/lead/evaluations" element={<EvaluationQueuePage />} />
+            <Route path="/lead/rubrics" element={<RubricsPage />} />
             <Route path="/lead/date-requests" element={<DateRequestsPage />} />
             <Route path="/lead/mentors" element={<MentorWorkload />} />
             <Route path="/lead/proposals" element={<ProposalApprovals />} />
@@ -134,6 +137,7 @@ export default function App() {
             <Route path="/mentor/srs" element={<SrsQueuePage />} />
             <Route path="/mentor/scrum" element={<ScrumOverviewPage />} />
             <Route path="/mentor/evaluations" element={<EvaluationQueuePage />} />
+            <Route path="/mentor/rubrics" element={<RubricsPage />} />
             <Route path="/mentor/date-requests" element={<DateRequestsPage />} />
             <Route path="/mentor/templates" element={<TemplatesPage />} />
             <Route path="/mentor/projects" element={<ProjectList title="My Projects" subtitle="Projects you mentor." />} />
@@ -146,6 +150,7 @@ export default function App() {
             <Route path="/student/srs" element={<StudentSrsPage />} />
             <Route path="/student/scrum" element={<StudentScrumPage />} />
             <Route path="/student/reviews" element={<StudentReviewsPage />} />
+            <Route path="/student/rubrics" element={<RubricsPage />} />
             <Route path="/student/github" element={<StudentGithubPage />} />
           </Route>
         </Route>
