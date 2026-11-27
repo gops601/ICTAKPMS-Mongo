@@ -153,7 +153,7 @@ def test_import_confirmation_returns_full_shareable_details(client, make_user, l
     h = login("admin@x.com")
     ou = db.session.query(OrganisationalUnit).filter_by(code="RETAIL").one()
     dom = db.session.query(Domain).first()
-    made = client.post("/api/batches", headers=h, json={"name": "Import batch", "ou_id": ou.id, "domain_id": dom.id,
+    made = client.post("/api/batches", headers=h, json={"code": "IMP-1", "name": "Import batch", "ou_id": ou.id, "domain_id": dom.id,
                                                           "details": {"programme_name": "P"}})
     assert made.status_code == 201
     code = made.get_json()["data"]["code"]  # batch IDs are system-generated

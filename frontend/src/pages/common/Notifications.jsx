@@ -21,12 +21,19 @@ export default function Notifications() {
     else reload()
   }
   const readAll = async () => { await notificationService.readAll(); reload() }
+  const clearAll = async () => {
+    if (!window.confirm('Clear your entire notification history? This cannot be undone.')) return
+    await notificationService.clearAll()
+    setPage(1)
+    reload()
+  }
 
   return (
     <div className="max-w-3xl">
       <PageHeader title="Notifications" actions={<>
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={unread} onChange={(e) => { setUnread(e.target.checked); setPage(1) }} />Unread only</label>
         <button className="btn-secondary" onClick={readAll}>Mark all as read</button>
+        <button className="btn-secondary" onClick={clearAll} disabled={items.length === 0}>Clear history</button>
       </>} />
       <Alert>{error}</Alert>
       <div className="card p-0">

@@ -35,10 +35,17 @@ const CHARTS = [
 ]
 
 /** Burndown and burnup of a project's Scrum board, measured in the tasks' estimated hours. */
-export default function BurnCharts({ projectId }) {
+export default function BurnCharts({ projectId, version }) {
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
-  useEffect(() => { scrumService.burn(projectId).then(setData).catch((e) => setError(errorMessage(e))) }, [projectId])
+  // Refetch whenever the board changes (`version`) and every 20 s, keeping the current charts on screen meanwhile.
+  useEffect(() => {
+    let live = true
+    const fetchBurn = () => scrumService.burn(projectId).then((d) => { if (live) { setData(d); setError('') } }).catch((e) => { if (live) setError(errorMessage(e)) })
+    fetchBurn()
+    const timer = setInterval(fetchBurn, 20000)
+    return () => { live = false; clearInterval(timer) }
+  }, [projectId, version])
 
   if (!data) return error ? <Alert>{error}</Alert> : <Spinner />
   return (

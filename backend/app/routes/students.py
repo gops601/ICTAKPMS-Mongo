@@ -5,7 +5,7 @@ from app.extensions import db
 from app.services.domain_sync_service import mentor_in_domains
 from app.models import Batch, BatchMentor, Mentor, Project, ProjectMentor, ProjectStudent, Student, User
 from app.permissions import current_user, roles_required
-from app.permissions.scope import lead_domain_ids, scoped_batches  # noqa: F401
+from app.permissions.scope import ensure_batch_access, lead_domain_ids, scoped_batches  # noqa: F401
 from app.schemas.org import CredentialsSchema, StudentCreateSchema, mentor_to_dict, student_to_dict
 from app.schemas.project import TransferMentorSchema
 from app.services import project_service, user_service
@@ -58,9 +58,9 @@ def list_students():
 @bp.post("/students")
 @bp.doc(security=SEC)
 @bp.arguments(StudentCreateSchema)
-@roles_required("admin")
+@roles_required("admin", "domain_lead")
 def create_student(data):
-    batch = user_service.ensure_batch(data["batch_id"])
+    batch = ensure_batch_access(current_user(), data["batch_id"])
     student, temp = user_service.create_student(batch, data["name"], data["email"], data["phone"],
                                                 data["registration_no"], data["extra_fields"])
     audit(current_user().id, "student.create", "student", student.id, {"batch": batch.code})
@@ -72,9 +72,9 @@ def create_student(data):
 @bp.doc(security=SEC, description="Issue fresh temporary passwords for a batch's students who have not logged in yet, "
                                   "for sharing. Passwords are returned once and never stored in clear text.")
 @bp.arguments(CredentialsSchema)
-@roles_required("admin")
+@roles_required("admin", "domain_lead")
 def issue_credentials(data):
-    batch = user_service.ensure_batch(data["batch_id"])
+    batch = ensure_batch_access(current_user(), data["batch_id"])
     issued, skipped = user_service.issue_batch_credentials(batch, data["student_ids"])
     audit(current_user().id, "student.credentials_issued", "batch", batch.id, {"issued": len(issued), "skipped": len(skipped)})
     db.session.commit()

@@ -7,5 +7,5 @@ from .problem import ProblemStatement, ProblemStatementDataset, ProblemStatement
 from .project import (Project, ProjectStudent, ProjectAssignment, SrsSubmission, SrsReviewHistory,  # noqa: F401
                       ProjectGithubRepository, ProjectLifecycleTransition, ProjectActivityLog, MentorFeedback, ProjectMentor)
 from .review import (EvaluationTemplate, ProjectReview, EvaluationCriterion, EvaluationScore,  # noqa: F401
-                     EvaluationRevision, ReviewStudentRemark, ReviewDateRequest)
+                     EvaluationRevision, ReviewStudentRemark, ReviewDateRequest, ReviewEvaluation)
 from .scrum import ScrumBoard, ScrumTask, ScrumTaskAssignee, ScrumTaskComment, ScrumTaskHistory  # noqa: F401

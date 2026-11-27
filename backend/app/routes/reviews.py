@@ -5,9 +5,9 @@ from flask_smorest import Blueprint
 from marshmallow import EXCLUDE, Schema, fields, validate
 
 from app.extensions import db
-from app.models import EvaluationTemplate, Project, ProjectReview, User
+from app.models import EvaluationTemplate, Project, ProjectReview, ReviewEvaluation, User
 from app.permissions import current_user, login_required, roles_required
-from app.permissions.scope import ensure_project_access, scoped_projects, student_profile
+from app.permissions.scope import ensure_project_access, mentor_profile, scoped_projects, student_profile
 from app.schemas.project import project_to_dict
 from app.services import evaluation_service as ev
 from app.services import lifecycle
@@ -54,6 +54,7 @@ class ReviewPayloadSchema(_Base):
 
 class ReviewReopenSchema(_Base):
     reason = fields.String(required=True)
+    mentor_id = fields.Integer(allow_none=True, load_default=None)     # Domain Lead / admin: revert only this evaluator's evaluation
 
 
 class ApplyTemplateSchema(_Base):
@@ -83,7 +84,7 @@ def _review_access(review_id):
 def _view(review):
     user = current_user()
     sp = student_profile(user) if user.role_name == "student" else None
-    d = ev.review_to_dict(review, user.role_name, sp.id if sp else None)
+    d = ev.review_to_dict(review, user.role_name, sp.id if sp else None, user=user)
     d["permissions"] = ev.review_permissions(user, review)
     if user.role_name != "student":
         from app.services.review_schedule_service import can_edit_date as can_edit_review_date, pending_request, request_to_dict
@@ -145,9 +146,10 @@ def get_review(review_id):
 
 
 @bp.put("/reviews/<int:review_id>")
-@bp.doc(security=SEC, description="Save a draft (criteria, scores, feedback). Criteria may change until submission.")
+@bp.doc(security=SEC, description="Save the caller's own draft (criteria, scores, feedback). Every mentor of the project and its Domain Lead "
+                                  "evaluate separately; the shared score is the average of the submitted evaluations.")
 @bp.arguments(ReviewPayloadSchema)
-@roles_required("mentor")
+@roles_required("mentor", "domain_lead")
 def save_review(data, review_id):
     review = _review_access(review_id)
     ev.save_draft(review, data, current_user())
@@ -158,7 +160,7 @@ def save_review(data, review_id):
 @bp.post("/reviews/<int:review_id>/submit")
 @bp.doc(security=SEC, description="Optionally includes the same payload as PUT, applied atomically before submitting.")
 @bp.arguments(ReviewPayloadSchema)
-@roles_required("mentor")
+@roles_required("mentor", "domain_lead")
 def submit_review(data, review_id):
     review = _review_access(review_id)
     ev.submit(review, data, current_user())
@@ -173,7 +175,7 @@ def submit_review(data, review_id):
 @roles_required("mentor", "domain_lead", "admin")
 def reopen_review(data, review_id):
     review = _review_access(review_id)
-    ev.reopen(review, data["reason"], current_user())
+    ev.reopen(review, data["reason"], current_user(), data.get("mentor_id"))
     db.session.commit()
     return ok(_view(review), "Evaluation reopened")
 
@@ -188,12 +190,12 @@ def get_revisions(review_id):
 @bp.post("/reviews/<int:review_id>/apply-template")
 @bp.doc(security=SEC)
 @bp.arguments(ApplyTemplateSchema)
-@roles_required("mentor")
+@roles_required("mentor", "domain_lead")
 def apply_template(data, review_id):
     user = current_user()
     review = _review_access(review_id)
     t = db.session.get(EvaluationTemplate, data["template_id"])
-    if not t or t.owner_id != user.id:
+    if not t or t.owner_id not in ev.template_owner_ids(user):
         raise NotFound("Template not found")
     ev.apply_template(review, t, user)
     db.session.commit()
@@ -212,10 +214,17 @@ def queue():
     projects = visible.with_only_columns(Project.id)
     stage_ok = db.or_(
         db.and_(ProjectReview.week_no == 1,
-                ProjectReview.project_id.in_(projects.where(Project.stage.notin_(["allocated", "completed"])))),
+                ProjectReview.project_id.in_(projects.where(Project.stage.in_(["srs_approved", "implementation", "final_evaluation"])))),
         db.and_(ProjectReview.week_no > 1,
                 ProjectReview.project_id.in_(projects.where(Project.stage.in_(["implementation", "final_evaluation"])))))
-    q = db.select(ProjectReview).where(ProjectReview.status != "submitted", stage_ok)
+    me = mentor_profile(current_user())
+    mine_done = db.select(ReviewEvaluation.review_id).where(ReviewEvaluation.mentor_id == (me.id if me else -1),
+                                                            ReviewEvaluation.status == "submitted")
+    # an evaluator still has work on a week another evaluator already submitted
+    pending = ProjectReview.status != "submitted"
+    if me and current_user().role_name in ("mentor", "domain_lead"):
+        pending = db.or_(pending, ProjectReview.id.notin_(mine_done))
+    q = db.select(ProjectReview).where(pending, stage_ok)
     if a.get("week", type=int):
         q = q.where(ProjectReview.week_no == a.get("week", type=int))
     if a.get("status") in ("pending", "draft", "reopened"):
@@ -249,19 +258,21 @@ def _own_template(template_id):
 
 
 @bp.get("/evaluation-criteria/templates")
-@bp.doc(security=SEC)
-@roles_required("mentor")
+@bp.doc(security=SEC, description="Criteria templates of the caller and of the other mentors / Domain Leads of the same domain.")
+@roles_required("mentor", "domain_lead")
 def list_templates():
-    q = db.select(EvaluationTemplate).where(EvaluationTemplate.owner_id == current_user().id)
+    user = current_user()
+    q = db.select(EvaluationTemplate).where(EvaluationTemplate.owner_id.in_(ev.template_owner_ids(user)))
     if request.args.get("week", type=int):
         q = q.where(db.or_(EvaluationTemplate.week_no == request.args.get("week", type=int), EvaluationTemplate.week_no.is_(None)))
-    return ok([_tpl(t) for t in db.session.scalars(q.order_by(EvaluationTemplate.week_no, EvaluationTemplate.name))])
+    return ok([{**_tpl(t), "is_mine": t.owner_id == user.id, "owner": ev.template_owner_name(t)}
+               for t in db.session.scalars(q.order_by(EvaluationTemplate.week_no, EvaluationTemplate.name))])
 
 
 @bp.post("/evaluation-criteria/templates")
 @bp.doc(security=SEC)
 @bp.arguments(TemplateSchema)
-@roles_required("mentor")
+@roles_required("mentor", "domain_lead")
 def create_template(data):
     user = current_user()
     t = EvaluationTemplate(owner_id=user.id, name=data["name"].strip(), week_no=data.get("week_no"),
@@ -274,7 +285,7 @@ def create_template(data):
 @bp.put("/evaluation-criteria/templates/<int:template_id>")
 @bp.doc(security=SEC)
 @bp.arguments(TemplateSchema)
-@roles_required("mentor")
+@roles_required("mentor", "domain_lead")
 def update_template(data, template_id):
     t = _own_template(template_id)
     t.name, t.week_no = data["name"].strip(), data.get("week_no")
@@ -285,7 +296,7 @@ def update_template(data, template_id):
 
 @bp.delete("/evaluation-criteria/templates/<int:template_id>")
 @bp.doc(security=SEC)
-@roles_required("mentor")
+@roles_required("mentor", "domain_lead")
 def delete_template(template_id):
     db.session.delete(_own_template(template_id))
     db.session.commit()
@@ -294,7 +305,7 @@ def delete_template(template_id):
 
 @bp.post("/evaluation-criteria/templates/samples")
 @bp.doc(security=SEC, description="Creates editable example templates (weeks 1–4) for the caller. Idempotent.")
-@roles_required("mentor")
+@roles_required("mentor", "domain_lead")
 def sample_templates():
     created = ev.create_samples(current_user())
     db.session.commit()

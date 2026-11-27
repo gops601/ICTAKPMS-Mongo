@@ -55,7 +55,7 @@ def _new_batch(portal, item, actor):
         if f.is_required and f.field_type == "text" and not details.get(f.field_key):
             details[f.field_key] = f"Imported from {portal.name}"
     try:
-        batch = org_service.create_batch({"name": item.get("name") or item["code"], "ou_id": ou.id, "domain_id": domain.id,
+        batch = org_service.create_batch({"code": org_service.new_batch_code(ou), "name": item.get("name") or item["code"], "ou_id": ou.id, "domain_id": domain.id,
                                           "start_date": item.get("start_date"), "end_date": item.get("end_date"),
                                           "details": details})
     except AppError as e:

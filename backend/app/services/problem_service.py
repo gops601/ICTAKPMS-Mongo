@@ -156,13 +156,17 @@ def update_ps(ps, data, user):
     return ps
 
 
-def delete_ps(ps):
-    """Permanently delete a Project Shelf entry. Refused while any project was allocated from it."""
+def delete_ps(ps, with_projects=False):
+    """Permanently delete a Project Shelf entry. Projects allocated from it block the deletion (409, with their count)
+    unless `with_projects` is set: then each is deleted too, which also removes its mentor assignments."""
     from app.models import Project
-    from app.services import file_service
-    used = db.session.query(Project).filter_by(problem_statement_id=ps.id).count()
-    if used:
-        raise AppError(f"{used} project(s) were allocated from this entry. Deactivate it instead of deleting.", 409)
+    from app.services import file_service, project_service
+    allocated = db.session.query(Project).filter_by(problem_statement_id=ps.id).all()
+    if allocated and not with_projects:
+        raise AppError(f"{len(allocated)} project(s) were allocated from this entry. Deactivate it instead, or delete it "
+                       "together with those projects.", 409, {"allocated_projects": len(allocated)})
+    for project in allocated:
+        project_service.delete_project(project)       # unassigns mentors, removes students' work on it
     files = [d.file for d in ps.datasets] + [d.file for d in ps.documents]
     info = {"code": ps.ps_code, "title": ps.title}
     db.session.delete(ps)                    # dataset / document links cascade

@@ -231,7 +231,7 @@ def test_batch_and_shelf_entry_created_by_admin_reach_the_domains_lead_and_mento
     ou = db.session.query(OrganisationalUnit).first()
     db.session.query(Notification).delete()
     db.session.commit()
-    b = client.post("/api/batches", headers=world["H"]["admin"], json={"name": "Fresh", "ou_id": ou.id, "domain_id": domain("AIML").id, "details": {"programme_name": "P"}})
+    b = client.post("/api/batches", headers=world["H"]["admin"], json={"code": "FRESH-1", "name": "Fresh", "ou_id": ou.id, "domain_id": domain("AIML").id, "details": {"programme_name": "P"}})
     assert b.status_code == 201
     assert b.get_json()["data"]["code"] in {x["code"] for x in client.get("/api/batches", headers=world["H"]["lead"]).get_json()["data"]}
     lead_id = db.session.query(User).filter_by(email="lead@x.com").one().id
@@ -275,7 +275,7 @@ def test_new_batch_gets_its_domains_mentors_and_admins_are_warned_about_leadless
     ent = domain("IOT")                                       # IoT has a mentor ("iot@x.com") but NO lead
     db.session.query(Notification).delete()
     db.session.commit()
-    b = client.post("/api/batches", headers=world["H"]["admin"], json={"name": "IoT batch", "ou_id": ou.id, "domain_id": ent.id, "details": {"programme_name": "P"}})
+    b = client.post("/api/batches", headers=world["H"]["admin"], json={"code": "IOT-1", "name": "IoT batch", "ou_id": ou.id, "domain_id": ent.id, "details": {"programme_name": "P"}})
     assert b.status_code == 201
     mentors = client.get(f"/api/batches/{b.get_json()['data']['id']}/mentors", headers=world["H"]["admin"]).get_json()["data"]
     assert mentors == []                                      # no lead, and mentors are never added automatically
@@ -331,7 +331,7 @@ def test_new_batch_gets_only_the_domain_lead_as_mentor(client, world):
     ensure_lead_mentor_profile(db.session.query(User).filter_by(email="lead@x.com").one(), domain("AIML").id)   # a lead is also a mentor
     db.session.commit()
     ou = db.session.query(OrganisationalUnit).first()
-    b = client.post("/api/batches", headers=world["H"]["admin"], json={"name": "AI batch", "ou_id": ou.id, "domain_id": domain("AIML").id,
+    b = client.post("/api/batches", headers=world["H"]["admin"], json={"code": "AI-1", "name": "AI batch", "ou_id": ou.id, "domain_id": domain("AIML").id,
                                                                        "details": {"programme_name": "P"}})
     assert b.status_code == 201
     mentors = client.get(f"/api/batches/{b.get_json()['data']['id']}/mentors", headers=world["H"]["admin"]).get_json()["data"]

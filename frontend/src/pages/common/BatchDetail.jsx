@@ -18,6 +18,7 @@ import { ProgressBar, StageBadge } from '../../components/ProjectBadges'
 const TABS = ['Students', 'Mentors', 'Projects']
 
 function MentorsTab({ batch, canManage }) {
+  const admin = useAuth().user?.role === 'admin'   // admins can pick any mentor, whatever the domain
   const [mentors, setMentors] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -38,7 +39,7 @@ function MentorsTab({ batch, canManage }) {
   const open = async (type, mentor) => {
     setDialog({ type, mentor }); setPick(''); setDialogError('')
     if (type !== 'remove') {
-      try { setPool((await userService.mentors({ per_page: 100, for_domain: batch.domain?.id })).items.filter((m) => m.is_active)) } catch (e) { setDialogError(errorMessage(e)) }
+      try { setPool((await userService.mentors({ per_page: 100, for_domain: admin ? undefined : batch.domain?.id })).items.filter((m) => m.is_active)) } catch (e) { setDialogError(errorMessage(e)) }
     }
   }
   const run = async () => {
@@ -80,7 +81,7 @@ function MentorsTab({ batch, canManage }) {
           </div>
         ) }] : []),
       ]} />
-      {addMany && <AddBatchMentorsModal batch={batch} onClose={() => setAddMany(false)} onDone={() => { setAddMany(false); load() }} />}
+      {addMany && <AddBatchMentorsModal admin={admin} batch={batch} onClose={() => setAddMany(false)} onDone={() => { setAddMany(false); load() }} />}
       {dialog && dialog.type === 'remove' && (
         <ConfirmDialog danger confirmLabel="Remove" busy={busy} message={`Remove ${dialog.mentor.name} from this batch? Their access to the batch's projects ends.`}
           onConfirm={run} onCancel={() => setDialog(null)} />
@@ -96,7 +97,7 @@ function MentorsTab({ batch, canManage }) {
               <option value="">Select a mentor…</option>
               {choices.map((m) => <option key={m.id} value={m.id}>{m.name} ({m.project_count} projects)</option>)}
             </select>
-            <p className="text-xs text-slate-500">Mentors of {batch.domain?.name || 'this domain'} (and mentors not tied to a domain yet). Assign as many as the batch needs; each can allocate projects to its students.</p>
+            <p className="text-xs text-slate-500">{admin ? 'Every active mentor' : `Mentors of ${batch.domain?.name || 'this domain'} (and mentors not tied to a domain yet)`}. Assign as many as the batch needs; each can allocate projects to its students.</p>
             {dialog.type === 'reassign' && <p className="text-xs text-slate-500">Projects with a mentor override move to the new mentor too.</p>}
           </div>
         </Modal>

@@ -36,6 +36,32 @@ class ProjectReview(TimestampMixin, db.Model):
     revisions = db.relationship("EvaluationRevision", back_populates="review", cascade="all, delete-orphan")
     student_remarks = db.relationship("ReviewStudentRemark", back_populates="review", cascade="all, delete-orphan")
     date_requests = db.relationship("ReviewDateRequest", back_populates="review", cascade="all, delete-orphan")
+    evaluations = db.relationship("ReviewEvaluation", back_populates="review", cascade="all, delete-orphan")
+
+
+class ReviewEvaluation(TimestampMixin, db.Model):
+    """One evaluator's own evaluation of a weekly review (the Domain Lead and every mentor of the project each have one).
+
+    Criteria, scores and individual remarks live here as JSON while the evaluator works. The shared `ProjectReview`
+    (its criteria/scores/feedback rows) holds the AVERAGE of the evaluators who have submitted; the rest of the app
+    reads that, so a week counts as evaluated as soon as one evaluator has submitted."""
+    __tablename__ = "review_evaluations"
+    __table_args__ = (db.UniqueConstraint("review_id", "mentor_id", name="uq_review_evaluator"),)
+    id = db.Column(db.Integer, primary_key=True)
+    review_id = db.Column(db.Integer, db.ForeignKey("project_reviews.id", ondelete="CASCADE"), nullable=False, index=True)
+    mentor_id = db.Column(db.Integer, db.ForeignKey("mentors.id", ondelete="CASCADE"), nullable=False, index=True)
+    status = db.Column(db.String(20), default="draft", nullable=False)  # draft|submitted|reopened
+    criteria = db.Column(db.JSON)          # [{"id", "name", "max_marks", "marks_obtained", "remarks"}]
+    student_remarks = db.Column(db.JSON)   # [{"student_id", "remarks", "marks_obtained"}]
+    remarks = db.Column(db.Text)
+    strengths = db.Column(db.Text)
+    improvements = db.Column(db.Text)
+    recommendations = db.Column(db.Text)
+    individual_max_marks = db.Column(db.Numeric(6, 2), default=10, server_default="10", nullable=False)
+    submitted_at = db.Column(db.DateTime)
+    version = db.Column(db.Integer, default=1, nullable=False)
+
+    review = db.relationship("ProjectReview", back_populates="evaluations")
 
 
 class EvaluationCriterion(TimestampMixin, db.Model):

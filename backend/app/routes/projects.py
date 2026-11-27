@@ -163,7 +163,7 @@ def set_mentor(data, project_id):
 
 @bp.delete("/projects/<int:project_id>")
 @bp.doc(security=SEC, description="Admin only. Permanently deletes a project with its reviews, board, SRS and feedback.")
-@roles_required("admin")
+@roles_required("admin", "domain_lead")
 def delete_project(project_id):
     user = current_user()
     project = ensure_project_access(user, project_id)

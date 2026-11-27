@@ -18,16 +18,22 @@ DEFAULT_DOMAINS = [("Enterprise Domain", "ENTERPRISE"), ("AI & ML", "AIML"), ("C
                    ("Digital Marketing", "DIGMKT"), ("IoT", "IOT"), ("Other", "OTHER")]
 # (field_key, label, type, required) – seed data only; admins can change all of it at runtime.
 DEFAULT_BATCH_FIELDS = {
-    "RETAIL": [("programme_name", "Programme Name", "text", True), ("student_count", "Student Count", "number", False),
+    "RETAIL": [("programme_name", "Programme Name", "select", True), ("student_count", "Student Count", "number", False),
                ("coordinator", "Coordinator", "text", False)],
     "ACADEMIC": [("university", "University", "text", True), ("college", "College", "text", True),
-                 ("programme", "Programme", "text", True), ("academic_year", "Academic Year", "text", False),
+                 ("programme", "Programme Name", "select", True), ("academic_year", "Academic Year", "text", False),
                  ("semester", "Semester", "text", False)],
     "CORPORATE": [("company_name", "Company Name", "text", True), ("training_programme", "Training Programme", "text", True),
                   ("department", "Department", "text", False), ("coordinator", "Coordinator", "text", False)],
     "GOVERNMENT": [("department_name", "Department Name", "text", True),
                    ("government_organisation", "Government Organisation", "text", True),
                    ("programme_name", "Programme Name", "text", True), ("nodal_officer", "Nodal Officer", "text", False)],
+}
+
+# Programme Name is a dropdown; picking "Other" lets the user type their own value.
+PROGRAMME_OPTIONS = {
+    ("RETAIL", "programme_name"): ["IRP", "SMP", "Upskilling", "Short Term", "Other"],
+    ("ACADEMIC", "programme"): ["Internship", "Project Oriented", "Long-Term Addon", "Project Support", "Other"],
 }
 
 
@@ -43,7 +49,13 @@ def seed_reference_data():
             db.session.flush()
             for i, (key, label, ftype, req) in enumerate(DEFAULT_BATCH_FIELDS[code]):
                 db.session.add(OUCustomField(ou_id=ou.id, scope="batch", field_key=key, label=label,
-                                             field_type=ftype, is_required=req, display_order=i))
+                                             field_type=ftype, is_required=req, display_order=i,
+                                             options=PROGRAMME_OPTIONS.get((code, key))))
+    for (code, key), options in PROGRAMME_OPTIONS.items():     # upgrade databases seeded with a free-text field
+        ou = db.session.query(OrganisationalUnit).filter_by(code=code).first()
+        field = (db.session.query(OUCustomField).filter_by(ou_id=ou.id, scope="batch", field_key=key).first() if ou else None)
+        if field and field.field_type == "text" and not field.options:
+            field.field_type, field.options, field.label = "select", options, "Programme Name"
     for name, code in DEFAULT_DOMAINS:
         if not db.session.query(Domain).filter_by(code=code).first():
             db.session.add(Domain(name=name, code=code))

@@ -48,6 +48,9 @@ def validate_custom_value(field, raw):
     elif kind == "select":
         options = field.options or []
         match = next((o for o in options if str(o).lower() == value.lower()), None)
+        has_other = any(str(o).strip().lower() == "other" for o in options)
+        if match is None and has_other:       # "Other" lets the user type their own value
+            return value, None
         if match is None:
             return None, f"{field.label} must be one of: {', '.join(map(str, options))}"
         value = str(match)

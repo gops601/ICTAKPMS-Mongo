@@ -183,7 +183,7 @@ describe('review page', () => {
     const rev = screen.getByRole('listitem', { name: 'Revision 2' })
     expect(within(rev).getByText(/Mis-keyed marks/)).toBeInTheDocument()
     expect(within(rev).getByText(/84 \/ 100 \(84%\)/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /reopen to correct/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /open to change marks/i })).toBeInTheDocument()
   })
 
   it('requires a reason to reopen, calls the API and returns to the editor', async () => {
@@ -191,10 +191,10 @@ describe('review page', () => {
     svc.reviewService.revisions.mockResolvedValue([])
     svc.reviewService.reopen.mockResolvedValue(review({ status: 'reopened', status_label: 'Under revision', criteria: [crit(1, 'A', 10, 5)] }))
     renderPage()
-    await userEvent.click(await screen.findByRole('button', { name: /reopen to correct/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /open to change marks/i }))
     const dialog = screen.getByRole('dialog')
     await userEvent.type(within(dialog).getByLabelText(/reason/i), 'Mis-keyed marks')
-    await userEvent.click(within(dialog).getByRole('button', { name: /^reopen$/i }))
+    await userEvent.click(within(dialog).getByRole('button', { name: /^open$/i }))
     await waitFor(() => expect(svc.reviewService.reopen).toHaveBeenCalledWith('11', 'Mis-keyed marks'))
     expect(await screen.findByRole('button', { name: /submit evaluation/i })).toBeInTheDocument()
   })
@@ -204,8 +204,8 @@ describe('review page', () => {
     svc.reviewService.revisions.mockResolvedValue([])
     svc.reviewService.reopen.mockRejectedValue({ response: { status: 422, data: { message: 'A reason (at least 5 characters) is required to reopen a review' } } })
     renderPage()
-    await userEvent.click(await screen.findByRole('button', { name: /reopen to correct/i }))
-    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /^reopen$/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /open to change marks/i }))
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /^open$/i }))
     expect(await within(screen.getByRole('dialog')).findByRole('alert')).toHaveTextContent(/at least 5 characters/)
   })
 

@@ -289,11 +289,10 @@ def new_batch_code(ou, mode="online"):
 
 
 def create_batch(data):
-    # The batch ID is always system-generated (any code sent by the client is ignored).
+    # The batch ID is typed by the admin / lead (required, unique); it never changes afterwards.
     ou = get_ou(data["ou_id"])
     if not ou.is_active:
         raise AppError("Cannot create a batch under an inactive OU", 422)
-    data = {**data, "code": new_batch_code(ou, str(data.get("mode") or "online").strip().lower())}
     clean, errors = validate_batch_data(ou, data)
     if errors:
         raise AppError("Validation failed", 422, errors)

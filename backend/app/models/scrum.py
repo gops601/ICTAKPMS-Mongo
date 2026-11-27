@@ -21,6 +21,7 @@ class ScrumTask(TimestampMixin, db.Model):
     description = db.Column(db.Text)
     assigned_student_id = db.Column(db.Integer, db.ForeignKey("students.id", ondelete="SET NULL"), index=True)
     created_by = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"))
+    task_type = db.Column(db.String(10), default="task", server_default="task", nullable=False)  # epic|story|task|bug
     priority = db.Column(db.String(10), default="medium", nullable=False)
     status = db.Column(db.String(15), default="backlog", nullable=False, index=True)
     position = db.Column(db.Integer, default=0, nullable=False)
