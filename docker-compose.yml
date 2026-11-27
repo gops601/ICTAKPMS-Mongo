@@ -1,9 +1,12 @@
 services:
   # The database is MongoDB Atlas (MONGODB_URI in .env), so there is no database container.
-  backend:
+  # One-off database set-up (indexes, seed data, admin, domain sync). It runs before the backend starts and, during an
+  # update, on its own (deploy.sh), so the backend itself can start in seconds and be replaced without downtime.
+  prepare:
     build: ./backend
-    # always restart (crash, Docker restart, PC reboot) so the app stays up while the screen is locked or nobody is logged in
-    restart: always
+    image: plms-backend
+    command: ["prepare"]
+    restart: "no"
     env_file: .env
     environment:
       MONGODB_URI: ${MONGODB_URI:?set MONGODB_URI in .env to your MongoDB Atlas connection string}
@@ -12,12 +15,32 @@ services:
     volumes:
       - uploads_data:/app/uploads
     networks: [plms_net]
-    healthcheck:       # startup seeds MongoDB first (~30 s), so allow a generous grace period
+
+  backend:
+    build: ./backend
+    image: plms-backend
+    depends_on:
+      prepare:
+        condition: service_completed_successfully
+    # always restart (crash, Docker restart, PC reboot) so the app stays up while the screen is locked or nobody is logged in
+    restart: always
+    deploy:
+      replicas: ${BACKEND_REPLICAS:-2}   # two copies, so one can be replaced while the other serves
+    env_file: .env
+    environment:
+      MONGODB_URI: ${MONGODB_URI:?set MONGODB_URI in .env to your MongoDB Atlas connection string}
+      MONGODB_DB: ${MONGODB_DB:-plms}
+      UPLOAD_FOLDER: /app/uploads
+      RUN_PREPARE: "0"          # set-up is done by the `prepare` service, not at every start
+    volumes:
+      - uploads_data:/app/uploads
+    networks: [plms_net]
+    healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:5000/api/health', timeout=4)"]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 90s
+      start_period: 30s
 
   frontend:
     build: ./frontend

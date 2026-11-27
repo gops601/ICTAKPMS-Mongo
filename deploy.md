@@ -196,7 +196,7 @@ Docker publishes ports itself and can bypass `ufw`. That is why step 4 binds the
 ```bash
 cd ICTAKPMS_Flask
 git pull origin main
-docker compose up -d --build        # rebuilds, creates new indexes automatically on start
+sh deploy.sh                         # zero-downtime update: builds, sets up the database, swaps the backend one container at a time
 docker compose ps
 docker compose logs --tail 50 backend
 ```
@@ -339,3 +339,11 @@ The pipeline does not take a backup. Check that the backups in section 9 are run
 
 Rollback: on the server, `git checkout <previous-commit>` (printed in the deployment log), then
 `docker compose up -d --build`.
+
+### Updating without downtime
+
+`sh deploy.sh` (after `git pull`) builds the new images while the old ones keep serving, runs the database set-up once
+(the `prepare` service), starts new backend containers beside the old ones, waits until they are healthy, then removes the old
+ones. nginx follows through Docker DNS. If the new backend does not become healthy, the old one stays running and the
+script stops. The frontend swap takes about a second. `BACKEND_REPLICAS` (default 2) sets the number of backend copies.
+A plain `docker compose up -d --build` still works but restarts the backend in one step, so use `deploy.sh`.

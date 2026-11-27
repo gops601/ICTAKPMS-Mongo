@@ -2,6 +2,8 @@ import api from './api'
 
 export const authService = {
   login: (email, password) => api.post('/auth/login', { email, password }).then((r) => r.data.data),
+  mentorProfile: () => api.get('/auth/mentor-profile').then((r) => r.data.data),
+  updateMentorProfile: (body) => api.put('/auth/mentor-profile', body).then((r) => r.data.data),
   me: () => api.get('/auth/me').then((r) => r.data.data),
   changePassword: (current_password, new_password) =>
     api.post('/auth/change-password', { current_password, new_password }).then((r) => r.data),
