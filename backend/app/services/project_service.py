@@ -265,7 +265,7 @@ def set_project_mentor(project, mentor_id, actor, reason=None):
 def assign_batch_mentor(batch, mentor, actor):
     if not mentor.user.is_active:
         raise AppError("That mentor's account is inactive", 422)
-    if mentor.domain_id and batch.domain_id and mentor.domain_id != batch.domain_id:
+    if actor.role_name != "admin" and mentor.domain_id and batch.domain_id and mentor.domain_id != batch.domain_id:
         leads_it = db.session.query(DomainLead.id).filter_by(user_id=mentor.user_id, domain_id=batch.domain_id).first()
         if not leads_it:                      # a domain lead is a mentor of every domain they lead
             raise AppError("That mentor belongs to a different domain", 422)

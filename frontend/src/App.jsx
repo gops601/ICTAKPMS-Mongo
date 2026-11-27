@@ -120,6 +120,7 @@ export default function App() {
             <Route path="/lead/evaluations" element={<EvaluationQueuePage />} />
             <Route path="/lead/rubrics" element={<RubricsPage />} />
             <Route path="/lead/date-requests" element={<DateRequestsPage />} />
+            <Route path="/lead/templates" element={<TemplatesPage />} />
             <Route path="/lead/mentors" element={<MentorWorkload />} />
             <Route path="/lead/proposals" element={<ProposalApprovals />} />
             <Route path="/lead/projects" element={<ProjectList title="Project Monitoring" subtitle="Student-wise progress, SRS status and delays in your domain." />} />

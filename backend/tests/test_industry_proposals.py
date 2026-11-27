@@ -216,7 +216,7 @@ def test_dates_entered_at_batch_creation_are_the_project_dates(client, world):
     ou = db.session.query(OrganisationalUnit).first()
     A = world["H"]["admin"]
     r = client.post("/api/batches", headers=A,
-                    json={"name": "Dated", "ou_id": ou.id, "domain_id": domain("AIML").id,
+                    json={"code": "DATED-1", "name": "Dated", "ou_id": ou.id, "domain_id": domain("AIML").id,
                           "start_date": "2026-12-01", "end_date": "2027-01-15", "details": {"programme_name": "P"}})
     assert r.status_code == 201, r.get_json()
     bid = r.get_json()["data"]["id"]

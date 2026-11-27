@@ -6,6 +6,7 @@ import Alert from './Alert'
 import Spinner from './Spinner'
 import StatusBadge from './StatusBadge'
 import TaskModal from './TaskModal'
+import { TypeIcon } from './taskTypes'
 import BulkTasksModal from './BulkTasksModal'
 
 // Recharts is large: load it only when someone opens the charts.
@@ -45,6 +46,7 @@ function TaskCard({ task, canMove, columns, onOpen, onDragStart, onDropOn, onMov
     >
       <div className="flex items-start gap-2">
         {canMove && <GripVertical className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden />}
+        <TypeIcon type={task.task_type} className="mt-0.5 h-4 w-4" />
         <button className="min-w-0 flex-1 text-left" onClick={() => onOpen(task)} aria-label={`Open task ${task.title}`}>
           <span className="block text-sm font-medium text-slate-900">{task.title}</span>
         </button>
@@ -71,7 +73,7 @@ function TaskCard({ task, canMove, columns, onOpen, onDragStart, onDropOn, onMov
   )
 }
 
-const boardVersion = (board) => board.columns.flatMap((c) => c.tasks.map((t) => `${t.id}:${t.status}:${t.estimated_hours}`)).join()
+const boardVersion = (board) => board.columns.flatMap((c) => c.tasks.map((t) => `${t.id}:${t.status}:${t.estimated_hours}:${t.due_date}:${t.start_date}:${t.version}`)).join()
 
 /** Jira-style board. Drag & drop uses native HTML5 events; every card also has a "move to" select for keyboard/touch use. */
 export default function ScrumBoard({ projectId }) {
@@ -143,7 +145,7 @@ export default function ScrumBoard({ projectId }) {
       <Alert>{error}</Alert>
       {perms.reason && <Alert type="info">{perms.reason}</Alert>}
       {/* keyed on the board so the charts reload after any change to it */}
-      {showCharts && <Suspense fallback={<Spinner />}><BurnCharts key={boardVersion(board)} projectId={projectId} /></Suspense>}
+      {showCharts && <Suspense fallback={<Spinner />}><BurnCharts version={boardVersion(board)} projectId={projectId} /></Suspense>}
 
       <div className="grid gap-3 overflow-x-auto pb-2 md:grid-cols-5" style={{ minWidth: 0 }}>
         {board.columns.map((c) => (

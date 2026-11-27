@@ -67,8 +67,9 @@ def list_batches():
 @bp.post("")
 @bp.doc(security=SEC)
 @bp.arguments(BatchSchema)
-@roles_required("admin")
+@roles_required("admin", "domain_lead")
 def create_batch(data):
+    _lead_domain_check(data.get("domain_id"))
     students = data.pop("students", None) or []
     user_service.validate_new_students(students)          # all-or-nothing: nothing is created if any row is invalid
     passwords = user_service.prehash_passwords(len(students))
@@ -98,9 +99,11 @@ def get_batch(batch_id):
 @bp.put("/<int:batch_id>")
 @bp.doc(security=SEC)
 @bp.arguments(BatchUpdateSchema)
-@roles_required("admin")
+@roles_required("admin", "domain_lead")
 def update_batch(data, batch_id):
-    existing = org_service.get_batch_or_404(batch_id)
+    existing = ensure_batch_access(current_user(), batch_id)
+    if data.get("domain_id") is not None:
+        _lead_domain_check(data["domain_id"])
     old_domain = existing.domain_id
     batch = org_service.update_batch(existing, data)
     audit(current_user().id, "batch.update", "batch", batch.id)
@@ -127,10 +130,10 @@ def set_project_dates(data, batch_id):
 @bp.delete("/<int:batch_id>")
 @bp.doc(security=SEC, description="Admin only. Refused (409) while the batch has projects; students must be deleted first "
                                   "or with ?with_students=1 (which also deletes their accounts).")
-@roles_required("admin")
+@roles_required("admin", "domain_lead")
 def delete_batch(batch_id):
     user = current_user()
-    batch = org_service.get_batch_or_404(batch_id)
+    batch = ensure_batch_access(user, batch_id)
     try:
         info = org_service.delete_batch(batch, user, with_students=request.args.get("with_students") in ("1", "true"))
         audit(user.id, "batch.delete", "batch", batch_id, info)
@@ -144,12 +147,20 @@ def delete_batch(batch_id):
 @bp.patch("/<int:batch_id>/status")
 @bp.doc(security=SEC)
 @bp.arguments(StatusSchema)
-@roles_required("admin")
+@roles_required("admin", "domain_lead")
 def set_status(data, batch_id):
-    batch = org_service.set_batch_status(org_service.get_batch_or_404(batch_id), data["status"])
+    batch = org_service.set_batch_status(ensure_batch_access(current_user(), batch_id), data["status"])
     audit(current_user().id, f"batch.{batch.status}", "batch", batch.id)
     db.session.commit()
     return ok(batch_to_dict(batch, org_service.batch_student_count(batch.id)))
+
+
+def _lead_domain_check(domain_id):
+    """A domain lead manages batches only inside the domain(s) they lead (like an admin for those domains)."""
+    from app.permissions.scope import lead_domain_ids
+    user = current_user()
+    if user.role_name == "domain_lead" and domain_id not in lead_domain_ids(user):
+        raise NotFound("Domain not found")
 
 
 # ------------------------------------------------------------ batch mentors

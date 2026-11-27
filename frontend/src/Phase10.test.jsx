@@ -123,7 +123,7 @@ describe('only mentors score; Domain Leads revert to the mentor', () => {
     svc.reviewService.get.mockResolvedValue(submitted())
     renderPage()
     expect(await screen.findByText('Design')).toBeInTheDocument()
-    expect(screen.getByText(/only the assigned mentor can give or change scores/i)).toBeInTheDocument()
+    expect(screen.getByText(/only the project's mentors and its domain lead give scores/i)).toBeInTheDocument()
     expect(screen.getByText(/revert it to the mentor with a reason/i)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /submit evaluation|save draft/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /reopen to correct/i })).not.toBeInTheDocument()
@@ -167,7 +167,7 @@ describe('only mentors score; Domain Leads revert to the mentor', () => {
     mockUser = { id: 1, name: 'Ada Admin', role: 'admin' }
     svc.reviewService.get.mockResolvedValue(submitted())
     renderPage()
-    expect(await screen.findByText(/only the assigned mentor can give or change scores/i)).toBeInTheDocument()
+    expect(await screen.findByText(/only the project's mentors and its domain lead give scores/i)).toBeInTheDocument()
     expect(screen.queryByText(/revert it to the mentor/i)).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /reopen to correct/i })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /submit evaluation/i })).not.toBeInTheDocument()

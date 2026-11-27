@@ -77,7 +77,7 @@ export default function BatchForm() {
     }
     try {
       if (editing) { await batchService.update(id, body); navigate('/admin/batches') } else {
-        const res = await batchService.create({ ...body, ou_id: Number(form.ou_id), students: students.filter((r) => !isBlank(r)) })
+        const res = await batchService.create({ ...body, code: form.code.trim(), ou_id: Number(form.ou_id), students: students.filter((r) => !isBlank(r)) })
         if (res.credentials?.length) setCreated(res); else navigate('/admin/batches')
       }
     } catch (err) { setError(errorMessage(err)); setErrs(fieldErrors(err)) } finally { setBusy(false) }
@@ -148,10 +148,10 @@ export default function BatchForm() {
             <p className="mt-1 text-xs text-slate-500">Week 1 is SRS submission and datasets, then implementation: 2 weeks offline, 3 weeks online. It applies to every project and student of the batch.</p>
           </div>
           <div>
-            <label htmlFor="code" className="label">Batch ID</label>
-            <input id="code" className="input bg-slate-50" readOnly value={editing ? form.code : ''}
-              placeholder="Generated automatically (e.g. ACADEMIC_ONLINE_0001)" />
-            {!editing && <p className="mt-1 text-xs text-slate-500">Issued when you save, based on the domain's short code.</p>}
+            <label htmlFor="code" className="label">Batch ID *</label>
+            <input id="code" className={`input ${editing ? 'bg-slate-50' : ''}`} readOnly={editing} required maxLength={50}
+              value={form.code} onChange={set('code')} placeholder="Type the batch ID (e.g. CS-2026-A)" />{err('code')}
+            <p className="mt-1 text-xs text-slate-500">{editing ? 'The batch ID cannot be changed after creation.' : 'Type a unique batch ID. It cannot be changed after the batch is created.'}</p>
           </div>
           <div>
             <label htmlFor="name" className="label">Batch name *</label>
@@ -192,9 +192,9 @@ export default function BatchForm() {
               <div className="mt-2 space-y-2">
                 {students.map((r, i) => (
                   <div key={i} className="grid grid-cols-2 gap-2 sm:grid-cols-[1fr_1.2fr_1fr_1fr_auto]">
-                    <input className="input" placeholder="Name" aria-label={`Student ${i + 1} name`} value={r.name} onChange={setRow(i, 'name')} />
-                    <input className="input" placeholder="Email" aria-label={`Student ${i + 1} email`} value={r.email} onChange={setRow(i, 'email')} />
-                    <input className="input" placeholder="Phone" aria-label={`Student ${i + 1} phone`} value={r.phone} onChange={setRow(i, 'phone')} />
+                    <input className="input" placeholder="Name *" required={!isBlank(r)} aria-label={`Student ${i + 1} name`} value={r.name} onChange={setRow(i, 'name')} />
+                    <input className="input" placeholder="Email *" required={!isBlank(r)} aria-label={`Student ${i + 1} email`} value={r.email} onChange={setRow(i, 'email')} />
+                    <input className="input" placeholder="Phone (optional)" aria-label={`Student ${i + 1} phone`} value={r.phone} onChange={setRow(i, 'phone')} />
                     <input className="input" placeholder="Reg. no (auto)" aria-label={`Student ${i + 1} registration number`} value={r.registration_no} onChange={setRow(i, 'registration_no')} />
                     <button type="button" className="btn-secondary" onClick={() => setStudents(students.filter((_, j) => j !== i))}>Remove</button>
                     {['name', 'email', 'phone', 'registration_no'].map((k) => err(`students.${i + 1}.${k}`))}

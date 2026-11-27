@@ -73,7 +73,7 @@ class BatchStudentSchema(_Base):
 
 
 class BatchSchema(_Base):
-    code = fields.String(load_default=None, allow_none=True, validate=validate.Length(max=50))  # blank = generated <OU>_<MODE>_NNNN id
+    code = fields.String(load_default=None, allow_none=True, validate=validate.Length(max=50))  # typed by the admin; required on create
     name = fields.String(required=True, validate=validate.Length(min=1, max=150))
     ou_id = fields.Integer(required=True)
     domain_id = fields.Integer(required=True)
@@ -114,7 +114,7 @@ class StudentCreateSchema(_Base):
     name = fields.String(required=True, validate=validate.Length(min=2, max=150))
     email = fields.Email(required=True)
     phone = fields.String(load_default=None, validate=validate.Length(max=30))
-    registration_no = fields.String(load_default=None, allow_none=True, validate=validate.Length(max=60))  # blank = generated <OU>_<MODE>_NNNN id
+    registration_no = fields.String(load_default=None, allow_none=True, validate=validate.Length(max=60))  # typed by the admin; required on create
     batch_id = fields.Integer(required=True)
     extra_fields = fields.Dict(load_default=dict)
 

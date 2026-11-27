@@ -147,7 +147,7 @@ def update_problem_statement(data, ps_id):
 @roles_required(*MANAGERS)
 def delete_problem_statement(ps_id):
     ps = _editable(ps_id)
-    info = problem_service.delete_ps(ps)
+    info = problem_service.delete_ps(ps, with_projects=request.args.get("with_projects") in ("1", "true"))
     audit(current_user().id, "problem_statement.delete", "problem_statement", ps_id, info)
     db.session.commit()
     return ok(message=f"{info['code']} was deleted")

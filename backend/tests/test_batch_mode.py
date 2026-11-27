@@ -8,7 +8,7 @@ from tests.test_student_shelf import domain, world  # noqa: F401
 def create(client, world, **kw):   # noqa: F811
     from app.models import OrganisationalUnit
     ou = db.session.query(OrganisationalUnit).first()
-    body = {"name": "M batch", "ou_id": ou.id, "domain_id": domain("AIML").id, "details": {"programme_name": "P"}, **kw}
+    body = {"code": f"M-{db.session.query(Batch).count() + 1}", "name": "M batch", "ou_id": ou.id, "domain_id": domain("AIML").id, "details": {"programme_name": "P"}, **kw}
     return client.post("/api/batches", headers=world["H"]["admin"], json=body)
 
 

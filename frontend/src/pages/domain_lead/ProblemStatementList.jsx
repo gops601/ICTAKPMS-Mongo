@@ -53,10 +53,15 @@ export default function ProblemStatementList() {
     catch (e) { setActionError(errorMessage(e)); setToggle(null) } finally { setBusy(false) }
   }
 
+  const [allocatedCount, setAllocatedCount] = useState(0)   // >0: asking whether to delete the allocated projects too
   const confirmDelete = async () => {
     setBusy(true); setActionError('')
-    try { await psService.remove(deleting.id); setDeleting(null); reload() }
-    catch (e) { setActionError(errorMessage(e)); setDeleting(null) } finally { setBusy(false) }
+    try { await psService.remove(deleting.id, allocatedCount > 0); setDeleting(null); setAllocatedCount(0); reload() }
+    catch (e) {
+      const n = e?.response?.data?.errors?.allocated_projects
+      if (n && !allocatedCount) setAllocatedCount(n)          // keep the dialog open and ask again
+      else { setActionError(errorMessage(e)); setDeleting(null); setAllocatedCount(0) }
+    } finally { setBusy(false) }
   }
 
   return (
@@ -117,8 +122,10 @@ export default function ProblemStatementList() {
         <Pagination meta={meta} onPage={setPage} />
       </div>
       {deleting && (
-        <ConfirmDialog danger confirmLabel="Delete permanently" busy={busy} onConfirm={confirmDelete} onCancel={() => setDeleting(null)}
-          message={`Permanently delete ${deleting.ps_code} – ${deleting.title}, with its datasets and documents? This cannot be undone. Projects already allocated from it block deletion (deactivate it instead).`} />
+        <ConfirmDialog danger confirmLabel="Delete permanently" busy={busy} onConfirm={confirmDelete} onCancel={() => { setDeleting(null); setAllocatedCount(0) }}
+          message={allocatedCount
+            ? `${deleting.ps_code} has ${allocatedCount} allocated project(s). Deleting it also deletes those projects (their reviews, scrum boards and SRS) and removes their mentor assignments automatically. This cannot be undone. Delete everything?`
+            : `Permanently delete ${deleting.ps_code} – ${deleting.title}, with its datasets and documents? This cannot be undone.`} />
       )}
       {toggle && (
         <ConfirmDialog message={toggle.status === 'active' ? `Deactivate ${toggle.ps_code}? It can no longer be allocated.` : `Activate ${toggle.ps_code}?`}

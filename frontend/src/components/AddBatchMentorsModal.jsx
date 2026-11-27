@@ -8,7 +8,7 @@ import Alert from './Alert'
  * Add one or several mentors to a batch. They then see the batch, its students and the projects students propose
  * (which they approve from Proposal Approvals). Offers the batch's domain mentors who are not on it yet.
  */
-export default function AddBatchMentorsModal({ batch, onClose, onDone }) {
+export default function AddBatchMentorsModal({ batch, admin, onClose, onDone }) {
   const [pool, setPool] = useState(null)
   const [picked, setPicked] = useState(new Set())
   const [q, setQ] = useState('')
@@ -19,14 +19,14 @@ export default function AddBatchMentorsModal({ batch, onClose, onDone }) {
     (async () => {
       try {
         const [all, current] = await Promise.all([
-          userService.mentors({ per_page: 100, for_domain: batch.domain?.id }),
+          userService.mentors({ per_page: 100, for_domain: admin ? undefined : batch.domain?.id }),
           batchMentorService.list(batch.id),
         ])
         const on = new Set(current.map((m) => m.id))
         setPool(all.items.filter((m) => m.is_active && !on.has(m.id)))
       } catch (e) { setError(errorMessage(e)); setPool([]) }
     })()
-  }, [batch.id, batch.domain?.id])
+  }, [batch.id, batch.domain?.id, admin])
 
   const toggle = (id) => setPicked((cur) => { const n = new Set(cur); n.has(id) ? n.delete(id) : n.add(id); return n })
   const shown = (pool || []).filter((m) => !q || `${m.name} ${m.email}`.toLowerCase().includes(q.toLowerCase()))

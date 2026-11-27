@@ -58,3 +58,13 @@ def mark_all_read():
     db.session.query(Notification).filter_by(user_id=current_user().id, is_read=False).update({"is_read": True})
     db.session.commit()
     return ok(message="All notifications marked as read")
+
+
+@bp.delete("")
+@bp.doc(security=SEC, description="Clear the caller's own notification history. Other users' notifications are never touched.")
+@login_required
+def clear_history():
+    n = db.session.query(Notification).filter_by(user_id=current_user().id).count()
+    db.session.query(Notification).filter_by(user_id=current_user().id).delete()
+    db.session.commit()
+    return ok({"deleted": n}, "Notification history cleared")

@@ -129,7 +129,7 @@ export const psService = {
   create: (body) => api.post('/problem-statements', body).then(d),
   update: (id, body) => api.put(`/problem-statements/${id}`, body).then(d),
   setStatus: (id, status) => api.patch(`/problem-statements/${id}/status`, { status }).then(d),
-  remove: (id) => api.delete(`/problem-statements/${id}`).then(d),
+  remove: (id, withProjects = false) => api.delete(`/problem-statements/${id}`, { params: withProjects ? { with_projects: 1 } : undefined }).then(d),
   industries: () => api.get('/problem-statements/industries').then(d),
   upload: (id, kind, source, description) => {
     const form = new FormData()
@@ -209,6 +209,7 @@ export const notificationService = {
   unreadCount: () => api.get('/notifications/unread-count').then((r) => r.data.data.count),
   markRead: (id) => api.post(`/notifications/${id}/read`).then(d),
   readAll: () => api.post('/notifications/read-all').then(d),
+  clearAll: () => api.delete('/notifications').then(d),
 }
 
 export const srsService = {

@@ -200,7 +200,7 @@ describe('creating and editing tasks', () => {
     fireEvent.change(within(dialog).getByLabelText(/due date/i), { target: { value: '2026-03-09' } })
     await userEvent.click(within(dialog).getByRole('button', { name: /create task/i }))
     await waitFor(() => expect(svc.scrumService.create).toHaveBeenCalledWith(7, {
-      title: 'Build login', description: 'JWT based', priority: 'high', assigned_student_ids: [2, 1],
+      task_type: 'task', title: 'Build login', description: 'JWT based', priority: 'high', assigned_student_ids: [2, 1],
       estimated_hours: 6.5, start_date: '2026-03-02', due_date: '2026-03-09', status: 'todo' }))
     await waitFor(() => expect(svc.scrumService.board).toHaveBeenCalledTimes(2))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()

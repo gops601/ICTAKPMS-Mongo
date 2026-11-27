@@ -151,6 +151,9 @@ def _hours(raw):
     return hours.quantize(Decimal("0.01")), None
 
 
+TASK_TYPES = ("epic", "story", "task", "bug")
+
+
 def _clean(data, existing=None):
     """Validate task fields; returns a dict containing only the fields that were supplied."""
     out, errors = {}, {}
@@ -172,6 +175,11 @@ def _clean(data, existing=None):
         if data["priority"] not in TASK_PRIORITIES:
             errors["priority"] = f"Priority must be one of: {', '.join(TASK_PRIORITIES)}"
         out["priority"] = data["priority"]
+    if "task_type" in data or not existing:
+        kind = data.get("task_type") or "task"
+        if kind not in TASK_TYPES:
+            errors["task_type"] = f"Type must be one of: {', '.join(TASK_TYPES)}"
+        out["task_type"] = kind
     if "estimated_hours" in data or not existing:
         out["estimated_hours"], problem = _hours(data.get("estimated_hours"))
         if problem:
@@ -477,6 +485,7 @@ def task_to_dict(task, comment_count=None):
     u = db.session.get(User, task.created_by) if task.created_by else None
     return {
         "id": task.id, "title": task.title, "description": task.description, "priority": task.priority,
+        "task_type": task.task_type or "task",
         "status": task.status, "position": task.position, "version": task.version,
         "assignees": [{"student_id": i, "name": _assignee_name(i)} for i in assignee_ids(task)],
         "assignee": {"student_id": task.assigned_student_id, "name": _assignee_name(task.assigned_student_id)} if task.assigned_student_id else None,

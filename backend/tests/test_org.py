@@ -18,8 +18,11 @@ def domain(code):
     return db.session.query(Domain).filter_by(code=code).one()
 
 
+_codes = iter(range(1, 10_000))
+
+
 def batch_body(**kw):
-    body = {"code": "B-001", "name": "Batch One", "ou_id": ou("ACADEMIC").id, "domain_id": domain("AIML").id,
+    body = {"code": f"B-{next(_codes):03d}", "name": "Batch One", "ou_id": ou("ACADEMIC").id, "domain_id": domain("AIML").id,
             "start_date": "2026-01-05", "end_date": "2026-02-05",
             "details": {"university": "Kerala Uni", "college": "CET", "programme": "BTech"}}
     body.update(kw)
@@ -112,18 +115,17 @@ def test_batch_validation_errors(client, admin):
     errs = r.get_json()["errors"]
     assert r.status_code == 422
     assert {"name", "end_date", "details.bogus", "details.university"} <= set(errs)
-    assert "code" not in errs  # a blank batch code is replaced by a generated <OU>_<MODE>_NNNN id
+    assert "code" not in errs  # the body above supplies a code
+    r = client.post("/api/batches", headers=admin, json=batch_body(code=""))
+    assert r.status_code == 422 and "code" in r.get_json()["errors"]      # the batch ID is typed, never generated
 
 
-def test_batch_id_is_generated_from_the_ou_and_mode(client, admin):
-    import re
-    a = client.post("/api/batches", headers=admin, json=batch_body()).get_json()["data"]
-    b = client.post("/api/batches", headers=admin, json=batch_body(code="B-001")).get_json()["data"]  # supplied code is ignored
-    c = client.post("/api/batches", headers=admin, json=batch_body(domain_id=domain("IOT").id)).get_json()["data"]
-    assert (a["code"], b["code"], c["code"]) == ("ACADEMIC_ONLINE_0001", "ACADEMIC_ONLINE_0002", "ACADEMIC_ONLINE_0003")
-    off = client.post("/api/batches", headers=admin, json=batch_body(mode="offline")).get_json()["data"]
-    assert off["code"] == "ACADEMIC_OFFLINE_0001"                         # each OU + mode has its own counter
-    assert a["code"] != "B-001"
+def test_batch_id_is_typed_by_the_admin_and_unique(client, admin):
+    a = client.post("/api/batches", headers=admin, json=batch_body(code="CS-2026-A")).get_json()["data"]
+    assert a["code"] == "CS-2026-A"
+    dup = client.post("/api/batches", headers=admin, json=batch_body(code="cs-2026-a"))
+    assert dup.status_code == 422 and "code" in dup.get_json()["errors"]
+    assert client.post("/api/batches", headers=admin, json=batch_body(code="")).status_code == 422
     # the ID never changes, even when the batch is edited or moved to another domain
     r = client.put(f"/api/batches/{a['id']}", headers=admin, json={"code": "HACK", "name": "Renamed", "domain_id": domain("IOT").id})
     assert r.status_code == 200 and r.get_json()["data"]["code"] == a["code"]

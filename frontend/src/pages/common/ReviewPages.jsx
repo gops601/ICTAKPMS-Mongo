@@ -25,6 +25,57 @@ const WORDS = { 3: 'three', 4: 'four' }
 const fmtTime = (iso) => new Date(`${iso}Z`).toLocaleString()
 
 // ---------------------------------------------------------------- single review
+/** Every evaluator's own result, and the overall (average) score the student's week is based on. */
+function EvaluatorsPanel({ review }) {
+  const list = review.evaluations || []
+  if (list.length === 0 && !review.evaluators_total) return null
+  const done = list.filter((e) => e.status === 'submitted')
+  return (
+    <div className="card" aria-label="Evaluators">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Evaluators ({done.length} of {review.evaluators_total} submitted)</h2>
+        {done.length > 0 && <span className="text-sm">Overall (average): <b>{fmtNum(review.overall?.percentage ?? 0)}%</b></span>}
+      </div>
+      <p className="mt-1 text-xs text-slate-500">The Domain Lead and every mentor of the project evaluate separately. The overall score is the average of the submitted evaluations; an evaluator who has not submitted is left out.</p>
+      <ul className="mt-3 divide-y divide-slate-100 text-sm">
+        {list.length === 0 && <li className="py-2 text-slate-500">No one has started this evaluation yet.</li>}
+        {list.map((e) => (
+          <li key={e.mentor_id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+            <span>{e.mentor}{e.is_mine ? ' (you)' : ''}</span>
+            <span className="flex items-center gap-3">
+              {e.status === 'submitted' && <span className="text-slate-600">{fmtNum(e.total_obtained)} / {fmtNum(e.total_max)} ({fmtNum(e.percentage)}%)</span>}
+              <StatusBadge tone={TONE[e.status]}>{e.status_label}</StatusBadge>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+/** Planning the review date is allowed for every week, even while the week is not open for scoring yet. */
+function SchedulePanel({ review, onDone }) {
+  const [date, setDate] = useState('')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const save = async () => {
+    setError(''); setBusy(true)
+    try { await reviewService.save(review.id, { review_date: date || null, version: review.version }); onDone() }
+    catch (e) { setError(errorMessage(e)) } finally { setBusy(false) }
+  }
+  return (
+    <div className="card">
+      <Alert>{error}</Alert>
+      <label htmlFor="sched" className="label">Review date</label>
+      <div className="flex flex-wrap items-center gap-2">
+        <input id="sched" type="date" className="input max-w-xs" value={date} onChange={(e) => setDate(e.target.value)} />
+        <button className="btn-primary" disabled={busy || !date} onClick={save}>{busy ? 'Saving…' : 'Schedule'}</button>
+      </div>
+      <p className="mt-1 text-xs text-slate-500">Evaluation opens on this date. Once saved, it can only move through an approved request.</p>
+    </div>
+  )
+}
+
 export function ReviewPage() {
   const { reviewId } = useParams()
   const { user } = useAuth()
@@ -37,6 +88,7 @@ export function ReviewPage() {
   const [busy, setBusy] = useState(false)
   const canSeeHistory = user.role !== 'student'
   const isLead = user.role === 'domain_lead'
+  const isMentor = user.role === 'mentor'
 
   const load = useCallback(async () => {
     try {
@@ -64,7 +116,7 @@ export function ReviewPage() {
         actions={<>
           <StatusBadge tone={TONE[review.status]}>{review.status_label}</StatusBadge>
           {(!perms.can_edit || perms.can_edit_date) && <DateChangeButton review={review} onDone={load} />}
-          {perms.can_reopen && <button className="btn-secondary" onClick={() => { setReopenError(''); setReopening(true) }}>{isLead ? 'Revert to mentor' : 'Reopen to correct'}</button>}
+          {perms.can_reopen && <button className="btn-secondary" onClick={() => { setReopenError(''); setReopening(true) }}>{isLead ? 'Revert to mentor' : isMentor ? 'Open to change marks' : 'Reopen to correct'}</button>}
           <Link to={`/reviews/project/${review.project_id}`} className="btn-secondary">All reviews</Link>
         </>} />
       {review.is_overdue && <Alert type="warning">This review is overdue.</Alert>}
@@ -80,10 +132,12 @@ export function ReviewPage() {
         </Alert>
       )}
       {(user.role === 'domain_lead' || user.role === 'admin') && review.visible && (
-        <Alert type="info">Only the assigned mentor can give or change scores.{isLead ? ' If a score needs another look, revert it to the mentor with a reason.' : ''}</Alert>
+        <Alert type="info">Only the project's mentors and its Domain Lead give scores.{isLead ? ' If a score needs another look, revert it to the mentor with a reason.' : ''}</Alert>
       )}
       {!review.visible && <Alert type="info">This evaluation has not been published yet.</Alert>}
       {review.visible && perms.can_edit && <ReviewEditor key={review.version} review={review} onChange={setReview} />}
+      {review.visible && user.role !== 'student' && <EvaluatorsPanel review={review} />}
+      {review.visible && !perms.can_edit && perms.can_schedule && !review.review_date && <SchedulePanel review={review} onDone={load} />}
       {review.visible && !perms.can_edit && (
         <>
           {perms.reason && <Alert type="info">{perms.reason}</Alert>}
@@ -107,8 +161,8 @@ export function ReviewPage() {
       )}
 
       {reopening && (
-        <Modal title={isLead ? 'Revert score to mentor' : 'Reopen evaluation'} onClose={() => setReopening(false)}
-          footer={<><button className="btn-secondary" onClick={() => setReopening(false)}>Cancel</button><button className="btn-primary" disabled={busy} onClick={reopen}>{busy ? 'Working…' : isLead ? 'Revert' : 'Reopen'}</button></>}>
+        <Modal title={isLead ? 'Revert score to mentor' : isMentor ? 'Open evaluation to change marks' : 'Reopen evaluation'} onClose={() => setReopening(false)}
+          footer={<><button className="btn-secondary" onClick={() => setReopening(false)}>Cancel</button><button className="btn-primary" disabled={busy} onClick={reopen}>{busy ? 'Working…' : isLead ? 'Revert' : isMentor ? 'Open' : 'Reopen'}</button></>}>
           <div className="space-y-3">
             <Alert>{reopenError}</Alert>
             <p className="text-sm text-slate-600">
@@ -327,7 +381,7 @@ export function TemplatesPage() {
 
   return (
     <div>
-      <PageHeader title="Evaluation Templates" subtitle="Reusable criteria sets. You can still add or change criteria on each review."
+      <PageHeader title="Evaluation Templates" subtitle="Reusable criteria sets shared by the Domain Lead and the mentors of your domain. You can still add or change criteria on each review."
         actions={<>
           <button className="btn-secondary" onClick={samples}>Add sample templates</button>
           <button className="btn-primary" onClick={() => setEditing('new')}><Plus className="h-4 w-4" />New template</button>
@@ -338,12 +392,14 @@ export function TemplatesPage() {
         {templates === null ? <Spinner /> : (
           <DataTable rows={templates} empty="No templates yet. Create one or add the sample templates." columns={[
             { key: 'name', header: 'Name' },
+            { key: 'owner', header: 'Created by', render: (t) => (t.is_mine === false ? t.owner : 'You') },
             { key: 'week', header: 'Suggested for', render: (t) => (t.week_no ? `Week ${t.week_no}` : 'Any week') },
             { key: 'criteria', header: 'Criteria', render: (t) => t.criteria.map((c) => `${c.name} (${fmtNum(c.max_marks)})`).join(', ') },
             { key: 'total', header: 'Total', render: (t) => fmtNum(t.total_marks) },
             { key: 'actions', header: '', render: (t) => (
-              <div className="flex gap-2"><button className="btn-secondary" onClick={() => setEditing(t)}>Edit</button>
+              t.is_mine !== false ? <div className="flex gap-2"><button className="btn-secondary" onClick={() => setEditing(t)}>Edit</button>
                 <button className="btn-secondary" aria-label={`Delete ${t.name}`} onClick={() => setDeleting(t)}><Trash2 className="h-4 w-4" /></button></div>
+                : <span className="text-xs text-slate-400">Shared</span>
             ) },
           ]} />
         )}

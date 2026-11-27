@@ -5,6 +5,7 @@ import Modal from './Modal'
 import Alert from './Alert'
 import Spinner from './Spinner'
 import ConfirmDialog from './ConfirmDialog'
+import { TASK_TYPES } from './taskTypes'
 
 export const PRIORITIES = ['low', 'medium', 'high', 'critical']
 const COLUMNS = [['backlog', 'Backlog'], ['todo', 'To Do'], ['in_progress', 'In Progress'], ['in_review', 'In Review'], ['completed', 'Completed']]
@@ -19,7 +20,7 @@ export default function TaskModal({ projectId, taskId, members, permissions, onC
   const creating = !taskId
   const [task, setTask] = useState(null)
   const [tab, setTab] = useState('Details')
-  const [form, setForm] = useState({ title: '', description: '', priority: 'medium', status: 'backlog', assigned_student_ids: [], estimated_hours: '', start_date: '', due_date: '' })
+  const [form, setForm] = useState({ task_type: 'task', title: '', description: '', priority: 'medium', status: 'backlog', assigned_student_ids: [], estimated_hours: '', start_date: '', due_date: '' })
   const [comment, setComment] = useState('')
   const [error, setError] = useState('')
   const [errs, setErrs] = useState({})
@@ -28,7 +29,7 @@ export default function TaskModal({ projectId, taskId, members, permissions, onC
 
   const fill = (t) => {
     setTask(t)
-    setForm({ title: t.title, description: t.description || '', priority: t.priority, status: t.status,
+    setForm({ task_type: t.task_type || 'task', title: t.title, description: t.description || '', priority: t.priority, status: t.status,
       assigned_student_ids: (t.assignees || (t.assignee ? [t.assignee] : [])).map((a) => a.student_id), estimated_hours: t.estimated_hours ?? '', start_date: t.start_date || '', due_date: t.due_date || '' })
   }
   useEffect(() => {
@@ -43,7 +44,7 @@ export default function TaskModal({ projectId, taskId, members, permissions, onC
     e.preventDefault()
     setBusy(true); setError(''); setErrs({})
     const body = {
-      title: form.title, description: form.description, priority: form.priority,
+      task_type: form.task_type, title: form.title, description: form.description, priority: form.priority,
       assigned_student_ids: form.assigned_student_ids,
       estimated_hours: form.estimated_hours === '' ? null : Number(form.estimated_hours),
       start_date: form.start_date || null, due_date: form.due_date || null,
@@ -89,6 +90,17 @@ export default function TaskModal({ projectId, taskId, members, permissions, onC
         <form onSubmit={save} className="space-y-3">
           {!editable && !creating && permissions.reason && <p className="text-xs text-slate-500">{permissions.reason}</p>}
           <fieldset disabled={!editable} className="space-y-3">
+            <div role="radiogroup" aria-label="Type">
+              <span className="label">Type *</span>
+              <div className="flex flex-wrap gap-2">
+                {TASK_TYPES.map(({ value, label, Icon, color }) => (
+                  <button type="button" key={value} role="radio" aria-checked={form.task_type === value}
+                    onClick={() => setForm({ ...form, task_type: value })}
+                    className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm ${form.task_type === value ? 'border-brand bg-brand/10 font-medium' : 'border-slate-300 bg-white'}`}>
+                    <Icon className={`h-4 w-4 ${color}`} aria-hidden />{label}
+                  </button>
+                ))}
+              </div>{err('task_type')}</div>
             <div><label htmlFor="t-title" className="label">Title *</label>
               <input id="t-title" className="input" required value={form.title} onChange={set('title')} />{err('title')}</div>
             <div><label htmlFor="t-desc" className="label">Description</label>

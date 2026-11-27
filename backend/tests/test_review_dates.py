@@ -9,6 +9,12 @@ from tests.test_reviews import full, put, rid, submit, world  # noqa: F401
 D = lambda days: (date.today() + timedelta(days=days)).isoformat()  # noqa: E731
 
 
+def open_today(review_id):
+    """The review date has arrived: evaluation is open."""
+    db.session.get(ProjectReview, review_id).review_date = date.today()
+    db.session.commit()
+
+
 def schedule(client, world, review_id, when):                                    # noqa: F811
     return put(client, world, "m1", review_id, review_date=when)
 
@@ -41,15 +47,17 @@ def test_a_scheduled_date_cannot_be_edited_in_place(client, world, scheduled):  
     r = put(client, world, "m1", scheduled, review_date=D(20))
     assert r.status_code == 422 and "review_date" in r.get_json()["errors"] and "Domain Lead must approve" in r.get_json()["message"]
     assert put(client, world, "m1", scheduled, review_date=None).status_code == 422          # nor cleared
-    assert put(client, world, "m1", scheduled, review_date=D(10), remarks="same date again").status_code == 200   # unchanged date is fine
+    assert put(client, world, "m1", scheduled, review_date=D(10)).status_code == 200        # an unchanged date is fine
+    assert put(client, world, "m1", scheduled, review_date=D(10), remarks="too early").status_code == 409   # evaluation opens on the date
     assert db.session.get(ProjectReview, scheduled).review_date.isoformat() == D(10)
+    open_today(scheduled)
     r = submit(client, world, "m1", scheduled, **full(), review_date=D(30))
     assert r.status_code == 422                                                              # submit cannot sneak a new date in either
     assert db.session.get(ProjectReview, scheduled).status != "submitted"
 
 
 def test_submitting_without_a_date_still_defaults_to_today(client, world):      # noqa: F811
-    rv = rid(world["main"], 2)
+    rv = rid(world["main"], 1)
     d = submit(client, world, "m1", rv, **full()).get_json()["data"]
     assert d["review_date"] == date.today().isoformat()
 
@@ -93,6 +101,7 @@ def test_a_date_must_be_scheduled_before_a_change_can_be_requested(client, world
 
 
 def test_submitted_reviews_cannot_be_rescheduled(client, world, scheduled):      # noqa: F811
+    open_today(scheduled)
     submit(client, world, "m1", scheduled, **full())
     assert ask(client, world, scheduled, D(20)).status_code == 409
 
@@ -157,10 +166,11 @@ def test_decision_permissions_and_idempotency(client, world, scheduled):        
 
 def test_cannot_approve_after_the_review_was_submitted(client, world, scheduled):   # noqa: F811
     req = ask(client, world, scheduled, D(14)).get_json()["data"]
+    open_today(scheduled)
     submit(client, world, "m1", scheduled, **full())
     r = decide(client, world, req["id"], "approve")
     assert r.status_code == 409 and "already been submitted" in r.get_json()["message"]
-    assert db.session.get(ProjectReview, scheduled).review_date.isoformat() == D(10)
+    assert db.session.get(ProjectReview, scheduled).review_date == date.today()
 
 
 # ======================================================================= withdrawing

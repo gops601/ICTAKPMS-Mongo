@@ -52,6 +52,7 @@ export const ROLE_MENU = {
     { to: '/lead/evaluations', label: 'Review Monitoring', icon: ListChecks },
     { to: '/lead/rubrics', label: 'Evaluation Rubric', icon: Scale },
     { to: '/lead/date-requests', label: 'Date Approvals', icon: CalendarClock },
+    { to: '/lead/templates', label: 'Evaluation Templates', icon: Star },
     { to: '/lead/reports', label: 'Reports', icon: BarChart3 },
     { to: '/lead/project-shelf', label: 'Project Shelf', icon: FileText, end: true },
     { to: '/lead/project-shelf/upload', label: 'Bulk Upload', icon: Upload },
